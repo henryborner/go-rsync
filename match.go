@@ -267,13 +267,13 @@ func GenerateSignatureReader(r io.Reader, fileSize int64, blockSize int32, stron
 	}
 
 	buf := make([]byte, blockSize)
+	h := algo.New() // reuse single hash instance
 	for i := int64(0); i < numBlocks; i++ {
 		remain := fileSize - i*int64(blockSize)
 		if remain > int64(blockSize) {
 			remain = int64(blockSize)
 		}
 		if _, err := io.ReadFull(r, buf[:remain]); err != nil {
-			// Should not happen if fileSize is correct
 			break
 		}
 		block := buf[:remain]
@@ -281,7 +281,7 @@ func GenerateSignatureReader(r io.Reader, fileSize int64, blockSize int32, stron
 		sig.BlockSums[i] = BlockSum{
 			Index:  int(i),
 			Sum1:   Checksum1(block),
-			Sum2:   strongSum(algo.New, block),
+			Sum2:   strongSumReuse(h, block, algo.Length),
 			Offset: i * int64(blockSize),
 			Length: int32(len(block)),
 		}
@@ -292,9 +292,17 @@ func GenerateSignatureReader(r io.Reader, fileSize int64, blockSize int32, stron
 
 func strongSum(hashFunc func() hash.Hash, data []byte) []byte {
 	h := hashFunc()
-	h.Reset()
 	h.Write(data)
 	return h.Sum(nil)
+}
+
+// strongSumReuse reuses a hash.Hash and pre-allocates output to avoid allocation.
+func strongSumReuse(h hash.Hash, data []byte, hashLen int) []byte {
+	h.Reset()
+	h.Write(data)
+	out := make([]byte, hashLen)
+	h.Sum(out[:0])
+	return out
 }
 
 func CalculateBlockSize(fileSize int64) int32 {
