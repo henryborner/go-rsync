@@ -168,6 +168,8 @@ Together (8+8=16) they cover all 16 int16 results from VPMADDUBSW.
 | v2 | VPADDW merge halves before widen (saves 6 insns) | 22 | 35.8 GB/s | 64.1 GB/s |
 | v3 | PREFETCHT0 + OOB guard (safe bottom-load) | 22 | 36.6 GB/s | 59.6 GB/s |
 | **v4** | **VPMADDWD pair-sum for s1** (saves 2 insns) | **20** | **42.4 GB/s** | **69.2 GB/s** |
+| — | SSE2: fix VPBROADCASTD bug, add PREFETCHT0 | ~24 | — | — |
+| — | **SSE2: VPHADDW for s1** (saves 2 insns) | **~22** | — | 26.1 GB/s |
 
 **Cumulative:** 28→20 instructions (-29%), +55% throughput on Xeon, +34% on Ryzen. Beats rsync's hand-written assembly (21 insns, 39.6 GB/s) by 7%.
 
@@ -260,28 +262,24 @@ Unused YMM registers: Y1, Y9, Y10.
 | Tier | Throughput | vs AVX2 |
 |------|:----------:|:-------:|
 | AVX2 (64B/iter) | 69.2 GB/s | — |
-| SSE2 (32B/iter) | 25.4 GB/s | 2.7× slower |
+| SSE2 (32B/iter) | 26.1 GB/s | 2.7× slower |
 | Pure Go (128B batch) | 1.9 GB/s | 36× slower |
 
 ---
 
-## 10. Appendix: Translating AVX2 to SSE2
+## 10. Appendix: SSE2 Path Notes
 
-Once the AVX2 design was settled, the SSE2/SSSE3 fallback was a mechanical translation:
+The SSE2 path is NOT a simple mechanical translation of AVX2. Key differences:
 
-| AVX2 | SSE2 | Rationale |
-|------|------|-----------|
-| YMM (256-bit) | XMM (128-bit) | half-width registers |
-| 64B/iter | 32B/iter | half the throughput |
-| 8 int32 lanes | 4 int32 lanes | no VEXTRACTI128 needed |
-| `VMOVDQU` | `MOVOU` | Go asm name for 128-bit unaligned load |
-| `VPUNPCKLWD Y5,Y0,Y3` | `VPUNPCKLWD X5,X0,X3` | same instruction, XMM variant |
-| `SHLL $6` (64×) | `SHLL $5` (32×) | block size changed |
-| weights [64..1] | weights [32..1] | re-slice lookup table |
-| `VEXTRACTI128` | not needed | XMM is naturally 128-bit |
-| `PSHUFD $0` broadcast | same | 4-lane broadcast instead of 8 |
-| `VPSRLDQ $8/$4` reduction | same | 4 lanes still need 2 shifts |
+| Aspect | AVX2 | SSE2 | Reason |
+|--------|------|------|--------|
+| s1 reduction | VPMADDWD pair-sum | **VPHADDW** pair-sum | Go asm lacks XMM `VPADDW`; VPHADDW is the only XMM word-add available |
+| s2 reduction | VPADDW merge + VPUNPCK | VPUNPCK per-half (no merge) | Can't use VPADDW with XMM; widen each half separately |
+| Block size | 64B/iter | 32B/iter | XMM = 128-bit |
+| `VPMADDWD` | YMM, int16_ones table | not used | VPMADDWD works but can't merge halves first |
+| `PREFETCHT0` | 384(DI) | 384(DI) | same |
+| Loop instructions | 20 | ~22 | 2 extra VPUNPCK per s2 half |
 
-Algorithm, deferred reduction, bottom-load structure, VPUNPCK zero-extend — all identical. The AVX2 version took 45→20 iterations of design; the SSE2 version was just editing constants and register names.
+**VPBROADCASTD bug (fixed in v0.2.1):** The original SSE2 code broadcast `init_s1` into all 4 XMM lanes, causing 4× amplification. Fixed by zero-initializing X14 and applying init_s1 as scalar at exit (same approach as AVX2).
 
-The primary throughput bottleneck shifted from VPUNPCK port contention (v1, 8 VPUNPCK/iter → port 5 saturated at ~52 GB/s Zen 4) to memory bandwidth / front-end decode. With VPMADDWD replacing 3 VPUNPCK instructions for s1, the mixed s1/s2 instruction mix better balances across execution ports.
+**XMM PADDW limitation:** Go Plan 9 assembler defines `APADDW` only for YMM registers (`{APADDW, ymm, Py1, ...}`). There is no XMM variant. This prevents using the VPADDW merge-before-widen optimization in SSE2, costing ~2 instructions per iteration.
