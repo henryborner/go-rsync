@@ -4,8 +4,8 @@
 
 ## 1. High-Level Summary
 
-| | go-rsync (rolling_amd64.s) |
-|---|
+| Feature | go-rsync |
+|---------|-----------|
 | Data type | `uint8` (0..255) |
 | CHAR_OFFSET | 31 (post-correction in Go) |
 | Return format | two `uint32` scalars (`*s1`, `*s2`) |
