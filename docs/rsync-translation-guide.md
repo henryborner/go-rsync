@@ -1,6 +1,8 @@
 # go-rsync AVX2 Checksum — Design & Translation Notes
 
 > Originally developed for [Shuttle](https://github.com/henryborner/shuttle), now a standalone library.
+>
+> The checksum algorithm and deferred-reduction structure draw from studying rsync's `checksum.c` and `simd-checksum-avx2.S`. The VPMADDWD pair-sum approach and Go Plan 9 assembly adaptations are original work.
 
 ## 1. High-Level Summary
 
