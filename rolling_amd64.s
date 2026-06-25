@@ -78,6 +78,10 @@ loop:
 	VPADDD  Y6, Y2, Y2
 	VPADDD  Y12, Y2, Y12          // Y12 += weighted_sum
 
+	// Prefetch 6 cachelines ahead (384 bytes), same as rsync.
+	// 预取前方 6 个缓存行（384 字节），同 rsync。
+	PREFETCHT0 384(DI)
+
 	// ═══════════════════════════════════════
 	// s1: accumulate delta → running s1 (vector)
 	// ═══════════════════════════════════════
