@@ -51,7 +51,13 @@ func (rs *RollingSum) S1() uint32 { return rs.s1 & 0xFFFF }
 func (rs *RollingSum) S2() uint32 { return rs.s2 & 0xFFFF }
 
 // Checksum1 computes a one-shot rolling checksum (non-rolling mode).
+// Zero-allocation: calls checksum1 directly, bypassing RollingSum heap alloc.
 // Checksum1 直接计算一次性的滚动校验和（非滚动模式）。
+// 零分配：直接调用 checksum1，绕过 RollingSum 堆分配。
 func Checksum1(data []byte) uint32 {
-	return NewRollingSum(data).Value()
+	if len(data) == 0 {
+		return 0
+	}
+	s1, s2 := checksum1(data)
+	return (s1 & 0xFFFF) | ((s2 & 0xFFFF) << 16)
 }
