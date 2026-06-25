@@ -1,6 +1,14 @@
-// AVX2 checksum: 64B/iter, VPMADDUBSW unsigned + VPUNPCK,
-// deferred s1 reduction, next-block load at loop bottom.
+// AVX2 checksum: 64B/iter, VPMADDWD pair-sum, deferred reduction.
 // CHAR_OFFSET post-correction in Go.
+//
+// ⚠️  IMPORTANT — Go Plan 9 asm operand swap:
+//   Intel manual:  VPMADDUBSW(unsigned src1,  signed src2)
+//   Go Plan 9 asm: VPMADDUBSW( signed src1, unsigned src2)  ← SWAPPED!
+//   Our usage:     VPMADDUBSW Y_ones(+1 signed), Y_data(unsigned), Y_dst
+//   → data bytes treated as unsigned (0..255), ones as signed +1. ✅
+//   Do NOT swap the operands or 0xFF will be misinterpreted as -1.
+//
+//   This is verified by parity tests: 64 bytes of 0xFF → s1=16320 (correct).
 
 #include "textflag.h"
 
