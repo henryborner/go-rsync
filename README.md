@@ -89,8 +89,7 @@ go test -bench BenchmarkAllTiers -benchmem ./...
 
 ## 🔗 Related
 
-- [rsync](https://github.com/WayneD/rsync) — the original
-- [librsync](https://github.com/librsync/librsync) — C library
+- [rsync](https://github.com/WayneD/rsync) — the original C implementation
 - [Shuttle](https://github.com/henryborner/shuttle) — Windows sync tool using this library
 
 ## 📄 License
