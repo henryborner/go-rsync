@@ -4,16 +4,61 @@ package delta
 
 import "golang.org/x/sys/cpu"
 
+var haveAVX2 = cpu.X86.HasAVX2
+
+// Checksum1 zero-alloc fast path for amd64 with AVX2.
+// Inlines the AVX2 checksum directly to avoid the checksum1 wrapper call overhead.
+// Remainder is processed 4 bytes at a time instead of byte-by-byte.
+func Checksum1(data []byte) uint32 {
+	n := len(data)
+	if n == 0 {
+		return 0
+	}
+
+	var s1, s2 uint32
+
+	// AVX2 assembly (64B/iter)
+	if haveAVX2 && n >= 64 && checksum1AVX2(data, &s1, &s2) {
+		p := n - n%64
+		s1 += uint32(p) * CHAR_OFFSET
+		s2 += uint32(p) * uint32(p+1) / 2 * CHAR_OFFSET
+
+		// Process remainder 4 bytes at a time (not byte-by-byte)
+		i := p
+		for i+4 <= n {
+			b0 := uint32(data[i])
+			b1 := uint32(data[i+1])
+			b2 := uint32(data[i+2])
+			b3 := uint32(data[i+3])
+			s2 += 4*s1 + 4*b0 + 3*b1 + 2*b2 + b3 + 10*CHAR_OFFSET
+			s1 += b0 + b1 + b2 + b3 + 4*CHAR_OFFSET
+			i += 4
+		}
+		// Final 1-3 bytes
+		for ; i < n; i++ {
+			s1 += uint32(data[i]) + CHAR_OFFSET
+			s2 += s1
+		}
+		return (s1 & 0xFFFF) | ((s2 & 0xFFFF) << 16)
+	}
+
+	// Fallback to checksum1 for non-AVX2 or tiny data
+	cs1, cs2 := checksum1(data)
+	return (cs1 & 0xFFFF) | ((cs2 & 0xFFFF) << 16)
+}
+
 // checksum1 computes the initial rolling checksum for data.
 // Uses AVX2 assembly on supported CPUs, falls back to 128B Go batch.
-func checksum1(data []byte) (s1, s2 uint32) {
+func checksum1(data []byte) (uint32, uint32) {
 	n := len(data)
 	if n == 0 {
 		return 0, 0
 	}
 
+	var s1, s2 uint32
+
 	// AVX2 assembly (64B/iter)
-	if cpu.X86.HasAVX2 && n >= 64 && checksum1AVX2(data, &s1, &s2) {
+	if haveAVX2 && n >= 64 && checksum1AVX2(data, &s1, &s2) {
 		p := n - n%64
 		s1 += uint32(p) * CHAR_OFFSET
 		s2 += uint32(p) * uint32(p+1) / 2 * CHAR_OFFSET

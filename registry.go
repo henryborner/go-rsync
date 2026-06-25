@@ -67,6 +67,15 @@ type ChecksumAlgo struct {
 	Name   string           // algorithm name e.g. "md5", "sha256", "xxh3" / 算法名称
 	New    func() hash.Hash // hash constructor / 哈希构造函数
 	Length int              // output bytes / 输出字节数
+
+	// FastSum is an optional zero-allocation fast path for in-memory hashing.
+	// It computes the hash of data and writes the result to out[:Length].
+	// out is a pre-allocated buffer with at least Length bytes of capacity.
+	// Returns out[:Length] (may be a subslice of out).
+	// If nil, the hash.Hash path (New+Write+Sum) is used instead.
+	// FastSum 是可选的零分配快速哈希路径。直接计算 data 的哈希写入 out[:Length]，
+	// out 是预分配的缓冲区（容量 ≥ Length）。返回 out[:Length]。若为 nil，走 hash.Hash 路径。
+	FastSum func(out, data []byte) []byte
 }
 
 var (
@@ -78,19 +87,22 @@ var (
 func init() {
 
 	Register(ChecksumAlgo{
-		Name:   "md5",
-		New:    newMD5,
-		Length: 16,
+		Name:    "md5",
+		New:     newMD5,
+		Length:  16,
+		FastSum: md5FastSum,
 	})
 	Register(ChecksumAlgo{
-		Name:   "sha256",
-		New:    newSHA256,
-		Length: 32,
+		Name:    "sha256",
+		New:     newSHA256,
+		Length:  32,
+		FastSum: sha256FastSum,
 	})
 	Register(ChecksumAlgo{
-		Name:   "xxh64",
-		New:    newXXH64,
-		Length: 8,
+		Name:    "xxh64",
+		New:     newXXH64,
+		Length:  8,
+		FastSum: xxh64FastSum,
 	})
 }
 

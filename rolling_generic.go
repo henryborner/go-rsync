@@ -10,3 +10,12 @@ func checksum1(data []byte) (s1, s2 uint32) {
 	}
 	return
 }
+
+// Checksum1 computes a one-shot rolling checksum.
+func Checksum1(data []byte) uint32 {
+	if len(data) == 0 {
+		return 0
+	}
+	s1, s2 := checksum1(data)
+	return (s1 & 0xFFFF) | ((s2 & 0xFFFF) << 16)
+}

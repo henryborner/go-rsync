@@ -141,6 +141,26 @@ func BenchmarkSignature(b *testing.B) {
 	}
 }
 
+func BenchmarkSignatureSHA256(b *testing.B) {
+	data := make([]byte, 1024*1024)
+	rand.Read(data)
+	blockSize := CalculateBlockSize(int64(len(data)))
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		GenerateSignature(data, blockSize, "sha256")
+	}
+}
+
+func BenchmarkSignatureXXH64(b *testing.B) {
+	data := make([]byte, 1024*1024)
+	rand.Read(data)
+	blockSize := CalculateBlockSize(int64(len(data)))
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		GenerateSignature(data, blockSize, "xxh64")
+	}
+}
+
 func BenchmarkSearch(b *testing.B) {
 	basis := make([]byte, 1024*1024) // 1MB
 	rand.Read(basis)

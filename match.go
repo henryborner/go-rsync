@@ -247,8 +247,134 @@ func (me *MatchEngine) computeStrong(data []byte) []byte {
 
 // GenerateSignature generates block signatures for file B (called by the receiver).
 // GenerateSignature 为文件 B 生成块签名（接收端调用）。
+//
+// This fast path directly slices data in memory and pre-allocates a single
+// Sum2 buffer to avoid per-block heap allocations.  For streaming I/O use
+// GenerateSignatureReader.
 func GenerateSignature(data []byte, blockSize int32, strongAlgo string) *Signature {
-	return GenerateSignatureReader(bytes.NewReader(data), int64(len(data)), blockSize, strongAlgo)
+	algo, err := GetAlgo(strongAlgo)
+	if err != nil {
+		algo = MustGet(GetDefault())
+	}
+
+	fileSize := int64(len(data))
+	numBlocks := int((fileSize + int64(blockSize) - 1) / int64(blockSize))
+	hashLen := algo.Length
+
+	// Pre-allocate one contiguous buffer for all Sum2 slices.
+	// Eliminates ~N heap allocations for N blocks.
+	sumBuf := make([]byte, numBlocks*hashLen)
+
+	sig := &Signature{
+		BlockSize: blockSize,
+		FileSize:  fileSize,
+		BlockSums: make([]BlockSum, numBlocks),
+	}
+
+	// AVX2 8-way md5 fast path: batch 8 blocks at a time in SIMD.
+	if strongAlgo == "md5" && md5x8available() {
+		const batchSize = 8
+		for base := 0; base < numBlocks; base += batchSize {
+			n := batchSize
+			if base+n > numBlocks {
+				n = numBlocks - base
+			}
+			if n == batchSize {
+				var off8, len8 [8]int
+				for b := 0; b < 8; b++ {
+					idx := base + b
+					o := int64(idx) * int64(blockSize)
+					r := fileSize - o
+					if r > int64(blockSize) {
+						r = int64(blockSize)
+					}
+					off8[b] = int(o)
+					len8[b] = int(r)
+				}
+				var out8 [8][16]byte
+				md5Hash8wayAVX2(data, off8, len8, &out8)
+				for b := 0; b < 8; b++ {
+					idx := base + b
+					s := idx * hashLen
+					copy(sumBuf[s:], out8[b][:])
+					sig.BlockSums[idx] = BlockSum{
+						Index:  idx,
+						Sum1:   Checksum1(data[off8[b] : off8[b]+len8[b]]),
+						Sum2:   sumBuf[s : s+hashLen],
+						Offset: int64(off8[b]),
+						Length: int32(len8[b]),
+					}
+				}
+			} else {
+				for b := 0; b < n; b++ {
+					idx := base + b
+					off := int64(idx) * int64(blockSize)
+					remain := fileSize - off
+					if remain > int64(blockSize) {
+						remain = int64(blockSize)
+					}
+					block := data[off : off+remain]
+					start := idx * hashLen
+					algo.FastSum(sumBuf[start:start+hashLen], block)
+					sig.BlockSums[idx] = BlockSum{
+						Index:  idx,
+						Sum1:   Checksum1(block),
+						Sum2:   sumBuf[start : start+hashLen],
+						Offset: off,
+						Length: int32(len(block)),
+					}
+				}
+			}
+		}
+		return sig
+	}
+
+	// Fast path: use algorithm-specific zero-alloc Sum (e.g. md5.Sum).
+	// Avoids hash.Hash interface dispatch + Reset/Write/Sum overhead.
+	if algo.FastSum != nil {
+		for i := 0; i < numBlocks; i++ {
+			off := int64(i) * int64(blockSize)
+			remain := fileSize - off
+			if remain > int64(blockSize) {
+				remain = int64(blockSize)
+			}
+			block := data[off : off+remain]
+			start := i * hashLen
+
+			sig.BlockSums[i] = BlockSum{
+				Index:  i,
+				Sum1:   Checksum1(block),
+				Sum2:   algo.FastSum(sumBuf[start:start+hashLen], block),
+				Offset: off,
+				Length: int32(len(block)),
+			}
+		}
+	} else {
+		h := algo.New() // reuse single hash instance
+		for i := 0; i < numBlocks; i++ {
+			off := int64(i) * int64(blockSize)
+			remain := fileSize - off
+			if remain > int64(blockSize) {
+				remain = int64(blockSize)
+			}
+			block := data[off : off+remain]
+
+			h.Reset()
+			h.Write(block)
+			start := i * hashLen
+			sum2 := h.Sum(sumBuf[start : start : start+hashLen])
+
+			sig.BlockSums[i] = BlockSum{
+				Index:  i,
+				Sum1:   Checksum1(block),
+				Sum2:   sum2,
+				Offset: off,
+				Length: int32(len(block)),
+			}
+		}
+	}
+
+	return sig
 }
 
 // GenerateSignatureParallel generates block signatures using multiple goroutines.
@@ -270,6 +396,9 @@ func GenerateSignatureParallel(data []byte, blockSize int32, strongAlgo string) 
 		BlockSums: make([]BlockSum, numBlocks),
 	}
 
+	// Pre-allocate one contiguous buffer for all Sum2 slices.
+	sumBuf := make([]byte, numBlocks*algo.Length)
+
 	workers := runtime.GOMAXPROCS(0)
 	chunkSize := (numBlocks + workers - 1) / workers
 
@@ -287,21 +416,46 @@ func GenerateSignatureParallel(data []byte, blockSize int32, strongAlgo string) 
 		wg.Add(1)
 		go func(start, end int) {
 			defer wg.Done()
-			h := algo.New()
-			for i := start; i < end; i++ {
-				off := int64(i) * int64(blockSize)
-				remain := fileSize - off
-				if remain > int64(blockSize) {
-					remain = int64(blockSize)
-				}
-				block := data[off : off+remain]
+			if algo.FastSum != nil {
+				for i := start; i < end; i++ {
+					off := int64(i) * int64(blockSize)
+					remain := fileSize - off
+					if remain > int64(blockSize) {
+						remain = int64(blockSize)
+					}
+					block := data[off : off+remain]
+					startIdx := i * algo.Length
 
-				sig.BlockSums[i] = BlockSum{
-					Index:  i,
-					Sum1:   Checksum1(block),
-					Sum2:   strongSumReuse(h, block, algo.Length),
-					Offset: off,
-					Length: int32(len(block)),
+					sig.BlockSums[i] = BlockSum{
+						Index:  i,
+						Sum1:   Checksum1(block),
+						Sum2:   algo.FastSum(sumBuf[startIdx:startIdx+algo.Length], block),
+						Offset: off,
+						Length: int32(len(block)),
+					}
+				}
+			} else {
+				h := algo.New()
+				for i := start; i < end; i++ {
+					off := int64(i) * int64(blockSize)
+					remain := fileSize - off
+					if remain > int64(blockSize) {
+						remain = int64(blockSize)
+					}
+					block := data[off : off+remain]
+
+					h.Reset()
+					h.Write(block)
+					startIdx := i * algo.Length
+					sum2 := h.Sum(sumBuf[startIdx : startIdx : startIdx+algo.Length])
+
+					sig.BlockSums[i] = BlockSum{
+						Index:  i,
+						Sum1:   Checksum1(block),
+						Sum2:   sum2,
+						Offset: off,
+						Length: int32(len(block)),
+					}
 				}
 			}
 		}(start, end)
@@ -329,42 +483,57 @@ func GenerateSignatureReader(r io.Reader, fileSize int64, blockSize int32, stron
 	}
 
 	buf := make([]byte, blockSize)
-	h := algo.New() // reuse single hash instance
-	for i := int64(0); i < numBlocks; i++ {
-		remain := fileSize - i*int64(blockSize)
-		if remain > int64(blockSize) {
-			remain = int64(blockSize)
-		}
-		if _, err := io.ReadFull(r, buf[:remain]); err != nil {
-			break
-		}
-		block := buf[:remain]
+	// Pre-allocate one contiguous buffer for all Sum2 slices.
+	sumBuf := make([]byte, int(numBlocks)*algo.Length)
 
-		sig.BlockSums[i] = BlockSum{
-			Index:  int(i),
-			Sum1:   Checksum1(block),
-			Sum2:   strongSumReuse(h, block, algo.Length),
-			Offset: i * int64(blockSize),
-			Length: int32(len(block)),
+	if algo.FastSum != nil {
+		for i := int64(0); i < numBlocks; i++ {
+			remain := fileSize - i*int64(blockSize)
+			if remain > int64(blockSize) {
+				remain = int64(blockSize)
+			}
+			if _, err := io.ReadFull(r, buf[:remain]); err != nil {
+				break
+			}
+			block := buf[:remain]
+			start := int(i) * algo.Length
+
+			sig.BlockSums[i] = BlockSum{
+				Index:  int(i),
+				Sum1:   Checksum1(block),
+				Sum2:   algo.FastSum(sumBuf[start:start+algo.Length], block),
+				Offset: i * int64(blockSize),
+				Length: int32(len(block)),
+			}
+		}
+	} else {
+		h := algo.New() // reuse single hash instance
+		for i := int64(0); i < numBlocks; i++ {
+			remain := fileSize - i*int64(blockSize)
+			if remain > int64(blockSize) {
+				remain = int64(blockSize)
+			}
+			if _, err := io.ReadFull(r, buf[:remain]); err != nil {
+				break
+			}
+			block := buf[:remain]
+
+			h.Reset()
+			h.Write(block)
+			start := int(i) * algo.Length
+			sum2 := h.Sum(sumBuf[start : start : start+algo.Length])
+
+			sig.BlockSums[i] = BlockSum{
+				Index:  int(i),
+				Sum1:   Checksum1(block),
+				Sum2:   sum2,
+				Offset: i * int64(blockSize),
+				Length: int32(len(block)),
+			}
 		}
 	}
 
 	return sig
-}
-
-func strongSum(hashFunc func() hash.Hash, data []byte) []byte {
-	h := hashFunc()
-	h.Write(data)
-	return h.Sum(nil)
-}
-
-// strongSumReuse reuses a hash.Hash and pre-allocates output to avoid allocation.
-func strongSumReuse(h hash.Hash, data []byte, hashLen int) []byte {
-	h.Reset()
-	h.Write(data)
-	out := make([]byte, hashLen)
-	h.Sum(out[:0])
-	return out
 }
 
 func CalculateBlockSize(fileSize int64) int32 {
