@@ -416,3 +416,29 @@ func BenchmarkMD5x8_ASM(b *testing.B) {
 		md5Hash8wayAVX2(data, offsets, lengths, &out)
 	}
 }
+
+// BenchmarkMD5x8_Bulk measures raw 8-way AVX2 MD5 core throughput.
+// 8 blocks × 4096 bytes each = 32KB per call. No tail, no padding, no checksum1.
+func BenchmarkMD5x8_Bulk(b *testing.B) {
+	if !md5x8available() {
+		b.Skip("AVX2 not available")
+	}
+	const bytesPerBlock = 4096
+	data := make([]byte, 8*bytesPerBlock)
+	for i := range data {
+		data[i] = byte(i % 256)
+	}
+	var offsets, lengths [8]int
+	for i := 0; i < 8; i++ {
+		offsets[i] = i * bytesPerBlock
+		lengths[i] = bytesPerBlock
+	}
+
+	var out [8][16]byte
+
+	b.SetBytes(8 * bytesPerBlock)
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		md5Hash8wayAVX2(data, offsets, lengths, &out)
+	}
+}
