@@ -300,4 +300,4 @@ The SSE2 path is NOT a simple mechanical translation of AVX2. Key differences:
 | 128 KB | 41.3 GB/s | 45.1 GB/s |
 | 256 KB | 41.5 GB/s | 45.2 GB/s |
 
-> ⚠️ Measurement error possible. Small-buffer results include Go function-call overhead (ABI stack-passing, CHAR_OFFSET post-correction) not present in the C intrinsics benchmark. rsync intrinsics benchmark counts `len&~63` bytes per call but reports full buffer size, inflating non-aligned sizes by up to 6%.
+> ⚠️ Measurement error possible.
