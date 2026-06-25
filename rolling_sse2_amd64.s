@@ -43,19 +43,15 @@ TEXT ·checksum1SSE2(SB), NOSPLIT, $0-41
 	ADDQ    $32, DI
 
 loop:
-	// s1: first 16B
-	VPMADDUBSW X15, X2, X0
-	VPUNPCKLWD X5, X0, X3
-	VPUNPCKHWD X5, X0, X0
-	VPADDD  X0, X3, X0
-
-	// s1: second 16B
-	VPMADDUBSW X15, X8, X6
-	VPUNPCKLWD X5, X6, X3
-	VPUNPCKHWD X5, X6, X6
-	VPADDD  X6, X3, X6
-
-	VPADDD  X6, X0, X0            // X0 = 4×int32 delta
+	// ═══════════════════════════════════════
+	// s1: VPHADDW horizontal pair-sum, no widen needed
+	// ═══════════════════════════════════════
+	VPMADDUBSW X15, X2, X0          // first 16B → 8 int16
+	VPMADDUBSW X15, X8, X1          // second 16B → 8 int16
+	VPHADDW X1, X0, X0              // h_add(X0) low, h_add(X1) high → 8 int16
+	VPUNPCKLWD X5, X0, X3           // widen lo 4
+	VPUNPCKHWD X5, X0, X0           // widen hi 4
+	VPADDD  X0, X3, X0              // X0 = 4×int32 delta_s1 (sum of 8 bytes each)
 
 	// s2: accumulate s1_before
 	VPADDD  X4, X14, X4
