@@ -4,19 +4,17 @@
 
 ## 1. High-Level Summary
 
-| | rsync (simd-checksum-avx2.S) | go-rsync (rolling_amd64.s) |
-|---|---|---|
-| Data type | `schar` (–128..127) | `uint8` (0..255) |
-| CHAR_OFFSET | 0 (hardcoded) | 31 (post-correction in Go) |
-| Return format | packed `uint32`: `(s1&0xFFFF)｜(s2<<16)` | two `uint32` scalars (`*s1`, `*s2`) |
-| s1 reduction | VPSRLD packed (int16 modulo hack) | VPMADDWD pair-sum (full 32-bit) |
-| s2 weighted reduction | VPSRLDQ packed + VPADDD | VPADDW merge + VPUNPCK widen |
-| PREFETCHT0 | yes (384 bytes ahead) | yes (384 bytes ahead) |
-| Loop instructions | 21 (`sub`+`jnz` fused) | **20** (`SUBQ`+`JZ`+`JMP`) |
+| | go-rsync (rolling_amd64.s) |
+|---|
+| Data type | `uint8` (0..255) |
+| CHAR_OFFSET | 31 (post-correction in Go) |
+| Return format | two `uint32` scalars (`*s1`, `*s2`) |
+| s1 reduction | VPMADDWD pair-sum (full 32-bit) |
+| s2 weighted reduction | VPADDW merge + VPUNPCK widen |
+| PREFETCHT0 | yes (384 bytes ahead) |
+| Loop instructions | **20** |
 
-> **Key insight:** Both use identical deferred reduction for s2. The difference is s1 reduction: rsync uses VPSRLD (correct only modulo 2^16; acceptable because CHAR_OFFSET=0 keeps values small). go-rsync uses VPMADDWD for full 32-bit precision — one instruction that multiplies adjacent int16 pairs by 1 and sums, replacing 3 instructions (VPUNPCKLWD + VPUNPCKHWD + VPADDD). This is the primary source of the 7% speed advantage over rsync's hand-written assembly.
-
-> **Both rsync and go-rsync use rolling checksums.** rsync does incremental byte-by-byte rolling in `match.c`'s `null_hash` path; go-rsync does the same in `Roll()`. The AVX2 functions compute *blocks* of 64 bytes, accepting initial s1/s2 values and returning updated ones.
+> **Key insight:** s1 uses VPMADDWD — one instruction that multiplies adjacent int16 pairs by 1 and sums, replacing 3 instructions (VPUNPCKLWD + VPUNPCKHWD + VPADDD). s2 weighted path retains VPUNPCK because weighted values may exceed int16 signed range after merge. Both paths use deferred reduction: s1 accumulates in vector, s2 splits into s1_before and weighted components.
 
 ---
 
@@ -163,7 +161,7 @@ Together (8+8=16) they cover all 16 int16 results from VPMADDUBSW.
 | v0 (baseline) | Signed VPMADDUBSW + VPMOVSXWD + per-iter s1 reduction | 45 | — | — |
 | — | Unsigned + VPUNPCK zero-extend | 41 | — | — |
 | — | Preload lower weight table Y13 | 36 | — | — |
-| — | Deferred s1 reduction (rsync-style) | 27 | — | — |
+| — | Deferred s1 reduction | 27 | — | — |
 | v1 | Bottom-load eliminates Y9/Y10 + VPBROADCASTD fix | 28 | 27.2 GB/s | 51.5 GB/s |
 | v2 | VPADDW merge halves before widen (saves 6 insns) | 22 | 35.8 GB/s | 64.1 GB/s |
 | v3 | PREFETCHT0 + OOB guard (safe bottom-load) | 22 | 36.6 GB/s | 59.6 GB/s |
@@ -171,9 +169,9 @@ Together (8+8=16) they cover all 16 int16 results from VPMADDUBSW.
 | — | SSE2: fix VPBROADCASTD bug, add PREFETCHT0 | ~24 | — | — |
 | — | **SSE2: VPHADDW for s1** (saves 2 insns) | **~22** | — | 26.1 GB/s |
 
-**Cumulative:** 28→20 instructions (-29%), +55% throughput on Xeon, +34% on Ryzen. Beats rsync's hand-written assembly (21 insns, 39.6 GB/s) by 7%.
+**Cumulative:** 28→20 instructions (-29%), +55% throughput on Xeon, +34% on Ryzen.
 
-**VPSRLD dead-end:** Attempted rsync's VPSRLD packed reduction (3→2 insns). Caused s1 amplification by 32768× due to garbage in upper 16 bits. Rejected — requires full 32-bit correctness for `Roll()`.
+**VPSRLD dead-end:** Attempted packed reduction via VPSRLD (3→2 insns). Caused s1 amplification by 32768× due to garbage in upper 16 bits. Rejected — requires full 32-bit correctness for `Roll()`.
 
 ---
 
@@ -243,11 +241,11 @@ Unused YMM registers: Y1, Y9, Y10.
 
 **Measured on Intel Xeon Platinum (cloud VM, 2 vCPU):**
 
-| Block size | go-rsync v4 | rsync-AVX2-asm | go-rsync advantage |
-|------------|:-----------:|:--------------:|:------------------:|
-| 1 KB | 16.8 GB/s | — | — |
-| 64 KB | 26.7 GB/s | — | — |
-| 1 MB | **42.4 GB/s** | 39.6 GB/s | **+7.1%** |
+| Block size | go-rsync v4 |
+|------------|:-----------:|
+| 1 KB | 16.8 GB/s |
+| 64 KB | 26.7 GB/s |
+| 1 MB | **42.4 GB/s** |
 
 **Measured on AMD Ryzen 9 8940HX (Zen 4, laptop):**
 
@@ -286,9 +284,9 @@ The SSE2 path is NOT a simple mechanical translation of AVX2. Key differences:
 
 ---
 
-## 11. Appendix: go-rsync vs rsync per-size comparison
+## 11. Appendix: Per-size performance data
 
-**Test setup:** Same Xeon Platinum cloud VM, same 1MB test data pattern (`i*7%251`), both with full tail-byte handling. go-rsync via `Checksum1()` (auto-dispatch to AVX2). rsync via AVX2 intrinsics. Measurement error ±3%.
+**Test setup:** Same Xeon Platinum cloud VM, same data pattern (`i*7%251`), both with full tail-byte handling. go-rsync via `Checksum1()` (auto-dispatch to AVX2). Measurement error ±3%.
 
 | Size | go-rsync | rsync-AVX2 |
 |------|:---:|:---:|
