@@ -283,3 +283,21 @@ The SSE2 path is NOT a simple mechanical translation of AVX2. Key differences:
 **VPBROADCASTD bug (fixed in v0.2.1):** The original SSE2 code broadcast `init_s1` into all 4 XMM lanes, causing 4× amplification. Fixed by zero-initializing X14 and applying init_s1 as scalar at exit (same approach as AVX2).
 
 **XMM PADDW limitation:** Go Plan 9 assembler defines `APADDW` only for YMM registers (`{APADDW, ymm, Py1, ...}`). There is no XMM variant. This prevents using the VPADDW merge-before-widen optimization in SSE2, costing ~2 instructions per iteration.
+
+---
+
+## 11. Appendix: go-rsync vs rsync per-size comparison
+
+**Test setup:** Same Xeon Platinum cloud VM, same 1MB test data pattern (`i*7%251`), both with full tail-byte handling. go-rsync via `Checksum1()` (auto-dispatch to AVX2). rsync via AVX2 intrinsics. Measurement error ±3%.
+
+| Size | go-rsync | rsync-AVX2 |
+|------|:---:|:---:|
+| 1 KB | 26.8 GB/s | 43.4 GB/s |
+| 4 KB | 36.8 GB/s | 48.3 GB/s |
+| 16 KB | 39.2 GB/s | 49.0 GB/s |
+| 64 KB | 40.7 GB/s | 44.3 GB/s |
+| 97 KB | 41.1 GB/s | 44.8 GB/s |
+| 128 KB | 41.3 GB/s | 45.1 GB/s |
+| 256 KB | 41.5 GB/s | 45.2 GB/s |
+
+> ⚠️ Measurement error possible. Small-buffer results include Go function-call overhead (ABI stack-passing, CHAR_OFFSET post-correction) not present in the C intrinsics benchmark. rsync intrinsics benchmark counts `len&~63` bytes per call but reports full buffer size, inflating non-aligned sizes by up to 6%.
