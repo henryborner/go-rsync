@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"hash"
 	"io"
+	"runtime"
+	"sync"
 )
 
 // BlockSum represents a single block checksum from file B.
@@ -247,6 +249,66 @@ func (me *MatchEngine) computeStrong(data []byte) []byte {
 // GenerateSignature 为文件 B 生成块签名（接收端调用）。
 func GenerateSignature(data []byte, blockSize int32, strongAlgo string) *Signature {
 	return GenerateSignatureReader(bytes.NewReader(data), int64(len(data)), blockSize, strongAlgo)
+}
+
+// GenerateSignatureParallel generates block signatures using multiple goroutines.
+// For large files (>1MB) this can be 2-4× faster than the serial version.
+// Uses the same algorithm as GenerateSignature, just parallelized across blocks.
+// GenerateSignatureParallel 使用多 goroutine 并行生成块签名。
+func GenerateSignatureParallel(data []byte, blockSize int32, strongAlgo string) *Signature {
+	algo, err := GetAlgo(strongAlgo)
+	if err != nil {
+		algo = MustGet(GetDefault())
+	}
+
+	fileSize := int64(len(data))
+	numBlocks := int((fileSize + int64(blockSize) - 1) / int64(blockSize))
+
+	sig := &Signature{
+		BlockSize: blockSize,
+		FileSize:  fileSize,
+		BlockSums: make([]BlockSum, numBlocks),
+	}
+
+	workers := runtime.GOMAXPROCS(0)
+	chunkSize := (numBlocks + workers - 1) / workers
+
+	var wg sync.WaitGroup
+	for w := 0; w < workers; w++ {
+		start := w * chunkSize
+		end := start + chunkSize
+		if end > numBlocks {
+			end = numBlocks
+		}
+		if start >= end {
+			continue
+		}
+
+		wg.Add(1)
+		go func(start, end int) {
+			defer wg.Done()
+			h := algo.New()
+			for i := start; i < end; i++ {
+				off := int64(i) * int64(blockSize)
+				remain := fileSize - off
+				if remain > int64(blockSize) {
+					remain = int64(blockSize)
+				}
+				block := data[off : off+remain]
+
+				sig.BlockSums[i] = BlockSum{
+					Index:  i,
+					Sum1:   Checksum1(block),
+					Sum2:   strongSumReuse(h, block, algo.Length),
+					Offset: off,
+					Length: int32(len(block)),
+				}
+			}
+		}(start, end)
+	}
+	wg.Wait()
+
+	return sig
 }
 
 // GenerateSignatureReader generates block signatures from an io.Reader,
