@@ -16,7 +16,9 @@ TEXT ·checksum1AVX2(SB), NOSPLIT, $0-41
 
 	// ── Tables ──
 	LEAQ    ones<>+0(SB), AX
-	VMOVDQU (AX), Y15             // all-1s (signed, for s1)
+	VMOVDQU (AX), Y15             // all-1s (signed, for VPMADDUBSW)
+	LEAQ    int16_ones<>+0(SB), AX
+	VMOVDQU (AX), Y11             // int16 all-1s (for VPMADDWD pair-sum)
 	LEAQ    mul_T2<>+0(SB), AX
 	VMOVDQU (AX), Y7              // weights [64..33]
 	VMOVDQU 32(AX), Y13           // weights [32..1]
@@ -41,20 +43,13 @@ TEXT ·checksum1AVX2(SB), NOSPLIT, $0-41
 
 loop:
 	// ═══════════════════════════════════════
-	// s1: VPMADDUBSW → VPUNPCK widen → 8×int32 delta
+	// s1: merge halves with VPADDW, then widen ONCE (saves 3 insns)
 	// ═══════════════════════════════════════
 
 	VPMADDUBSW Y15, Y2, Y0        // first 32B → 16 int16
-	VPUNPCKLWD Y5, Y0, Y3
-	VPUNPCKHWD Y5, Y0, Y0
-	VPADDD  Y0, Y3, Y0            // Y0 = 8×int32 for first 32B
-
 	VPMADDUBSW Y15, Y8, Y6        // second 32B → 16 int16
-	VPUNPCKLWD Y5, Y6, Y3
-	VPUNPCKHWD Y5, Y6, Y6
-	VPADDD  Y6, Y3, Y6            // Y6 = 8×int32 for second 32B
-
-	VPADDD  Y6, Y0, Y0            // Y0 = 8×int32 delta_s1
+	VPADDW  Y6, Y0, Y0            // combine halves (16-bit) → 16 int16
+	VPMADDWD Y11, Y0, Y0          // horizontal pair-sum → 8×int32 delta_s1
 
 	// ═══════════════════════════════════════
 	// s2: accumulate s1_before (deferred)
@@ -62,20 +57,15 @@ loop:
 	VPADDD  Y4, Y14, Y4           // Y4 = Σ running_s1_at_block_start
 
 	// ═══════════════════════════════════════
-	// s2: weighted byte sums → accumulate in Y12
+	// s2: weighted sums — merge halves, widen ONCE (saves 3 insns)
 	// ═══════════════════════════════════════
 
 	VPMADDUBSW Y7, Y2, Y2         // first 32B × weights [64..33]
-	VPUNPCKLWD Y5, Y2, Y3
-	VPUNPCKHWD Y5, Y2, Y2
-	VPADDD  Y2, Y3, Y2
-
 	VPMADDUBSW Y13, Y8, Y6        // second 32B × weights [32..1]
-	VPUNPCKLWD Y5, Y6, Y3
-	VPUNPCKHWD Y5, Y6, Y6
-	VPADDD  Y6, Y3, Y6
-
-	VPADDD  Y6, Y2, Y2
+	VPADDW  Y6, Y2, Y2            // combine halves (16-bit)
+	VPUNPCKLWD Y5, Y2, Y3         // widen lo 8 (can't use VPMADDWD: values > 32767)
+	VPUNPCKHWD Y5, Y2, Y2         // widen hi 8
+	VPADDD  Y2, Y3, Y2            // Y2 = 8×int32 weighted
 	VPADDD  Y12, Y2, Y12          // Y12 += weighted_sum
 
 	// Prefetch 6 cachelines ahead (384 bytes), same as rsync.
@@ -87,7 +77,7 @@ loop:
 	// ═══════════════════════════════════════
 	VPADDD  Y14, Y0, Y14          // running s1 += delta
 
-	// ── Load next block (or exit) ──
+	// ── Load next block (check before load to avoid OOB) ──
 	SUBQ    $1, SI
 	JZ      done
 	VMOVDQU 0(DI), Y2             // next first 32B → Y2
@@ -153,6 +143,13 @@ DATA ones<>+8(SB)/8,  $0x0101010101010101
 DATA ones<>+16(SB)/8, $0x0101010101010101
 DATA ones<>+24(SB)/8, $0x0101010101010101
 GLOBL ones<>(SB), RODATA|NOPTR, $32
+
+// ── int16 all-1s: 8 × uint16(1) → 8 × int32(1) via VPMADDWD ──
+DATA int16_ones<>+0(SB)/8,  $0x0001000100010001
+DATA int16_ones<>+8(SB)/8,  $0x0001000100010001
+DATA int16_ones<>+16(SB)/8, $0x0001000100010001
+DATA int16_ones<>+24(SB)/8, $0x0001000100010001
+GLOBL int16_ones<>(SB), RODATA|NOPTR, $32
 
 // ── Byte weight table: 64 descending bytes [64,63,...,1] as LE uint64 ──
 DATA mul_T2<>+0(SB)/8,  $0x393a3b3c3d3e3f40  // 64,63,62,61,60,59,58,57
