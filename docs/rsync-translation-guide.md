@@ -144,7 +144,21 @@ Together (8+8=16) they cover all 16 int16 results from VPMADDUBSW.
 
 `X0` is the **low 128 bits** of `Y0`, not an independent register. Writing `Y0` automatically updates `X0`. This is used in the exit reduction — no need for `VEXTRACTI128 $0, Y0, X0`.
 
-### 4.4 Go assembler limitations
+### 4.4 VPANDN / VPTERNLOGD operand swap (MD5 core)
+
+Go Plan 9 swaps src1/src2 for ALL non-commutative SIMD instructions:
+
+| Instruction | Intel manual | Go Plan 9 asm |
+|------------|-------------|---------------|
+| `VPANDN A,B,C` | `C = ~A & B` | `C = A &^ B` (A & ~B) |
+| `VPTERNLOGD imm,A,B,C` | n = (C<<2)\|\(A<<1\)\|B | n = (C<<2)\|\(B<<1\)\|A ← **swapped** |
+
+`VPTERNLOGD` truth table immediates must be computed with Go-swapped order.
+Using Intel-manual values ($0xB8/$0xCA/$0x65) produces wrong MD5 hashes.
+Correct Go-swapped values: R1=$0xD8, R2=$0xAC, R4=$0x63.
+See `gen_md5x8/main.go` and `gen_md5x16/main.go` for the fixed generators.
+
+### 4.5 Go assembler limitations
 
 - No memory operands for VPMADDUBSW (must use register src2).
 - `VPBROADCASTD` is available but was the source of a bug (see §6).
@@ -176,13 +190,49 @@ Together (8+8=16) they cover all 16 int16 results from VPMADDUBSW.
 
 ## 6. Bugs Fixed
 
-### 6.1 VPBROADCASTD amplification
+### 6.1 VPBROADCASTD amplification (v0.1.x)
 
 `VPBROADCASTD X0, Y14` replicated init_s1 into 8 lanes. Each iteration `Y4 += Y14` counted it 8×. Fixed by keeping Y14 zero-initialized (byte sums only) and applying init_s1/s2 as scalars at exit (§2.2).
 
 ### 6.2 Y15 register pollution (v0.1.3)
 
 The s2 weight-load section used `LEAQ mul_T2<>+32(SB), AX; VMOVDQU (AX), Y15`, corrupting the all-ones table. Fixed by using separate Y13 for lower weights.
+
+### 6.3 VPANDN operand swap — AVX2 MD5 (v0.1.4.2)
+
+Go Plan 9 `VPANDN A,B,C` = `C = A &^ B`, NOT Intel's `C = ~A & B`.
+The MD5 code generator (`gen_md5x8/main.go`) used Intel semantics for Round
+1/2/4, producing wrong F functions. All 8 lanes of AVX2 MD5 were silently
+wrong for every block.
+
+**Fix**: swapped operands in generator → regenerated `md5x8_amd64.s`.
+Added `TestMD5x8_AVX2_Parity` (AVX2 vs stdlib md5.Sum).
+
+### 6.4 VPGATHERDD mask zeroing + Go asm VSIB bug (v0.1.4.2–v0.1.4.3)
+
+Two bugs in the gather load path:
+1. **Mask zeroing** — VPGATHERDD zeros the mask register after execution
+   (per Intel spec). Single mask init → only first gather works.
+2. **VSIB encoding** — Go Plan 9 assembler has hardcoded base register
+   and broken displacement in VPGATHERDD encoding.
+
+**Fix**: reload mask (`VPCMPEQD` / `KXNORW`) before every gather.
+Use raw machine code `BYTE` opcodes to bypass Go asm VSIB bug entirely.
+
+### 6.5 VPTERNLOGD operand swap — AVX-512 MD5 (v0.1.4.4)
+
+Same class as §6.3: Go Plan 9 swaps src1/src2 for `VPTERNLOGD`.
+Truth table index computed as `n=(dst<<2)|(src2<<1)|src1` (not Intel's
+`src1`/`src2` order). All three rounds using VPTERNLOGD (R1,R2,R4) had
+wrong immediates in the AVX-512 core.
+
+Impact: 1GB identical file sync took 2+ minutes — server (Xeon w/
+AVX-512) generated wrong MD5 signatures, client (stdlib MD5) found zero
+matches → byte-by-byte scan.
+
+**Fix**: recomputed all imm8 values for Go-swapped order ($0xD8/$0xAC/$0x63),
+regenerated `md5x16_amd64.s`. Added `TestMD5x16_AVX512_Parity`,
+`TestMD5x16_CoreOnly`, `TestMD5x16_GatherVerification`.
 
 ---
 
@@ -223,6 +273,16 @@ Unused YMM registers: Y1, Y5, Y9, Y10.
 |------|------|---------|
 | `TestAVX2Parity` (11 cases) | zeros, 0xFF, incremental, random | verify AVX2 engine |
 | `TestSSE2Parity` (10 cases) | zeros, 0xFF, incremental, random | verify SSE2 engine |
+
+**MD5 SIMD parity tests** (`md5x8_test.go`) — compare AVX2/AVX-512 MD5 against stdlib `md5.Sum`:
+
+| Test | Scope |
+|------|-------|
+| `TestMD5x8_AVX2_Parity` | 8-way AVX2 MD5 vs stdlib (700-byte blocks) |
+| `TestMD5x16_AVX512_Parity` | 16-way AVX-512 MD5 vs stdlib (2048-byte blocks) |
+| `TestMD5x16_UnevenLengths` | 16 mixed-size blocks (63–4096 bytes) |
+| `TestMD5x16_CoreOnly` | AVX-512 core with manually-built x matrix (bypasses gather) |
+| `TestMD5x16_GatherVerification` | verify VPGATHERDD loads correct transposed data |
 
 **Performance benchmark** (`tier_bench_test.go`) — three-way comparison:
 
