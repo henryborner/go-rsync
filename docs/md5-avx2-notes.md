@@ -24,8 +24,9 @@ Path selection:  AVX512 (blockSize ≥ 2KB) → AVX2 → scalar
 | File | Role |
 |------|------|
 | `md5x8_amd64.s` | 8-way AVX2 core, **generated** by `gen_md5x8/main.go` |
-| `md5x8_gather_amd64.s` | VPGATHERDD load+transpose (~30 insn/chunk) |
-| `md5x8_load_transpose_amd64.s` | VPINSRD fallback (~288 insn/chunk) |
+| `md5x8_gather_amd64.s` | **Raw machine code** VPGATHERDD load+transpose (BYTE opcodes) |
+| `md5x8_load_transpose_amd64.s` | VPINSRD scalar fallback (~288 insn/chunk, always correct) |
+| `md5x8_purego.go` | Pure-Go 8-way MD5 reference (used for validation & non-AVX2 fallback) |
 | `md5x8_transpose.s` | Contiguous 8×64→16 YMM transpose (tail only) |
 | `md5x8_amd64.go` | Glue: `md5Hash8wayAVX2`, finalization |
 | `md5x8_common.go` | `t256[]`, `shifts[]`, `md5FinalLane` |
@@ -46,9 +47,26 @@ blockSize).  Each 64B chunk is transposed to SoA: word `w` becomes a YMM/ZMM of
 
 **Loading.**  `VPGATHERDD` gathers 8 (or 16) dwords from scattered positions in
 one instruction.  AVX2 uses YMM mask (`VPCMPEQD Y,Y,Y` for all-ones); AVX512
-uses k-mask (`KXNORW K1,K1,K1`).  Go asm operand order: `(base)(idx*scale),
-mask, dst`.  For AVX512 the form with ZMM index register works; GPR-indexed
-(via stack array) does not.
+uses k-mask (`KXNORW K1,K1,K1`).
+
+**⚠️ VPGATHERDD mask zeroing.**  VPGATHERDD **zeros the mask register** after
+execution.  Must reload the mask before **every** gather: pre-compute all-ones
+in a spare register (e.g. `VPCMPEQD Y3,Y3,Y3`) then `VMOVDQA Y3,Y2` before
+each gather.  Without reload, subsequent gathers silently read zero data.
+
+**⚠️ Go assembler VSIB bug.**  Go Plan 9's VPGATHERDD encoding has multiple
+bugs: base register is hardcoded (changing R8/R12/BP values at runtime has no
+effect), VSIB displacement field produces wrong addresses, and non-Y1
+destination registers may return zeros.  The workaround: emit raw machine code
+via `BYTE` pseudo-instructions, bypassing the assembler entirely.
+
+Encoding for `VPGATHERDD Y2, disp(R8)(Y7*2), Y1`:
+```
+C4 C2 6D 90 [ModRM] 78 [disp8]
+    ↑ VEX3   ↑ opcode  ↑ VSIB (scale=×2,idx=Y7,base=R8)
+```
+Word 0 (no disp): `BYTE $0xC4; BYTE $0xC2; BYTE $0x6D; BYTE $0x90; BYTE $0x0C; BYTE $0x78`
+Word N (disp=N*4): same but ModRM=`4C` + trailing `BYTE $disp`
 
 **Implicit register rotation.**  Y0-Y3 hold (a,b,c,d) but logical roles permute
 per step via a compile-time table, avoiding 5 `VMOVDQA` per step.  Only one
@@ -89,11 +107,19 @@ cd gen_md5x16 && go run .   # → ../md5x16_amd64.s
 
 ## Quirks
 
+- **VPANDN operand order.**  Go Plan 9 `VPANDN A,B,C` = `C = A &^ B`
+  (not Intel's `C = ~A & B`).  The generator (`gen_md5x8/main.go`) was
+  fixed to swap operands for Round 1/2/4.
 - **VPGATHERDD syntax.**  Go asm order is `(base)(idx*scale), mask, dst` —
   not Intel's `mask, mem, dst`.  AVX512 needs `K1` (k-mask), not `YMM`.
 - **VPGATHERDD mask init.**  Must explicitly set to all-ones
   (`VPCMPEQD Y,Y,Y` for YMM; `KXNORW K1,K1,K1` for k-mask).  Uninitialised
   masks silently zero-fill.
+- **VPGATHERDD mask zeroing.**  Instruction zeros mask after execution.
+  Must reload before each gather — pre-compute all-ones in spare register.
+- **VPGATHERDD raw machine code.**  Go assembler VSIB encoding has bugs
+  (hardcoded base reg, broken displacement).  Workaround: `BYTE` opcodes
+  (see Loading section above for encoding).
 - **`VPMADDUBSW` operand order.**  Go asm: signed first, unsigned second.
   Intel manual has them swapped.
 - **PowerShell encoding.**  `Set-Content` → UTF-16.  Edit `.s` files with
