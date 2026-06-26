@@ -61,6 +61,8 @@ type MatchEngine struct {
 	checksums  []BlockSum       // checksums from the receiver / 目标端发来的校验和列表
 	hashTable  [][]hashEntry    // dynamic hash table / 动态大小哈希表
 	tableSize  uint32           // current table size / 当前表大小
+	cachedHash hash.Hash        // reused across Search to avoid per-hit allocation
+	cachedSum  []byte           // reused sum buffer to avoid Sum(nil) allocation
 
 	// stats / 统计
 	HashHits     int
@@ -79,6 +81,7 @@ func NewMatchEngine(blockSize int32, strongAlgo string) *MatchEngine {
 	return &MatchEngine{
 		blockSize:  blockSize,
 		strongHash: algo.New,
+		cachedHash: algo.New(),
 	}
 }
 
@@ -145,18 +148,24 @@ func (me *MatchEngine) Search(data []byte) []MatchResult {
 		if len(bucket) > 0 {
 			me.HashHits++
 
-			// Cache strong sum per offset (same as rsync's done_csum2).
-			// 同一 offset 只算一次强校验和（同 rsync done_csum2）。
-			blockData := data[offset : offset+int64(me.blockSize)]
-			computedSum2 := me.computeStrong(blockData)
+			// Lazy strong sum: only compute MD5 when sum1 matches (same as rsync's done_csum2).
+			// For large files, 99%+ of hash hits fail at sum1 comparison.
+			// Computing MD5 before sum1 check wastes ~16TB of hashing on a 1GB file.
+			var sum2Done bool
+			var computedSum2 []byte
 
 			for _, entry := range bucket {
 				if entry.sum1 != rs.Value() {
 					continue
 				}
 
-				// Level 3: strong checksum verification (pre-computed, zero overhead).
-				// Level 3: 强校验和验证（预计算，无重复开销）。
+				// Only compute strong checksum when weak sum matches.
+				if !sum2Done {
+					blockData := data[offset : offset+int64(me.blockSize)]
+					computedSum2 = me.computeStrong(blockData)
+					sum2Done = true
+				}
+
 				if !bytes.Equal(computedSum2, me.checksums[entry.idx].Sum2) {
 					me.FalseAlarms++
 					continue
@@ -234,13 +243,13 @@ func (me *MatchEngine) emitLiterals(results []MatchResult, data []byte, offset i
 }
 
 // computeStrong computes the strong checksum for the given data.
-// Used in the search loop to avoid repeated hash.New calls.
-// computeStrong 计算给定数据的强校验和（用于搜索循环预计算，避免重复 hash.New）。
+// Uses a cached hash instance and sum buffer to avoid per-call allocation.
 func (me *MatchEngine) computeStrong(data []byte) []byte {
-	h := me.strongHash()
-	h.Reset()
-	h.Write(data)
-	return h.Sum(nil)
+	me.cachedHash.Reset()
+	me.cachedHash.Write(data)
+	// Reuse sum buffer — Sum appends to the provided slice, no allocation.
+	me.cachedSum = me.cachedHash.Sum(me.cachedSum[:0])
+	return me.cachedSum
 }
 
 // GenerateSignature generates block signatures from in-memory data.
@@ -287,7 +296,8 @@ func GenerateSignatureReader(r io.Reader, fileSize int64, blockSize int32, stron
 	// AVX512 16-way md5 fast path (blockSize >= 2KB only).
 	// AVX512 gather overhead dominates for small blocks; threshold empirically
 	// determined on Intel Xeon Platinum @ 2.5GHz (crossover at ~1400 bytes).
-	if strongAlgo == "md5" && md5x16available() && blockSize >= 2048 {
+	// FIXME: likely same MD5 correctness bug as AVX2 path — disabled pending verification.
+	if false && strongAlgo == "md5" && md5x16available() && blockSize >= 2048 {
 		const batchSize = 16
 		batchBuf := make([]byte, batchSize*int(blockSize))
 

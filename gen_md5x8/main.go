@@ -114,22 +114,23 @@ func main() {
 			i, round+1, g, s, T[i], rA, rB, rC, rD)
 
 		// Round function → F in Y12.  X[g] is already in Y13 (preloaded).
+		// NOTE: Go Plan 9 VPANDN src1,src2,dst → dst = src1 &^ src2 (not Intel order!)
 		switch round {
-		case 0: // F = (b&c) | (~b&d)
+		case 0: // F = (b&c) | (~b&d) = (b&c) | (d&~b)
 			w("\tVPAND  %s, %s, Y9", rB, rC)
-			w("\tVPANDN %s, %s, Y10", rB, rD)
+			w("\tVPANDN %s, %s, Y10", rD, rB) // Y10 = d &^ b = d & ~b = ~b & d
 			w("\tVPOR   Y9, Y10, Y12")
-		case 1: // F = (b&d) | (c&~d)
+		case 1: // F = (b&d) | (c&~d) = (b&d) | (c&~d)
 			w("\tVPAND  %s, %s, Y9", rB, rD)
-			w("\tVPANDN %s, %s, Y10", rD, rC)
+			w("\tVPANDN %s, %s, Y10", rC, rD) // Y10 = c &^ d = c & ~d
 			w("\tVPOR   Y9, Y10, Y12")
 		case 2: // F = b ^ c ^ d
 			w("\tVPXOR  %s, %s, Y12", rB, rC)
 			w("\tVPXOR  %s, Y12, Y12", rD)
-		case 3: // F = c ^ (b | ~d)
-			w("\tVPANDN %s, %s, Y9", rB, rD)
-			w("\tVPXOR  Y8, Y9, Y9")
-			w("\tVPXOR  %s, Y9, Y12", rC)
+		case 3: // F = c ^ (b | ~d) = c ^ (b | ~d)
+			w("\tVPANDN %s, %s, Y9", rD, rB) // Y9 = d &^ b = d & ~b
+			w("\tVPXOR  Y8, Y9, Y9")         // Y9 = ~(d&~b) = b | ~d
+			w("\tVPXOR  %s, Y9, Y12", rC)    // Y12 = c ^ (b | ~d)
 		}
 
 		// ILP: compute a+X+T in parallel with F, then combine.
