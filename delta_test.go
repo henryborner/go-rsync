@@ -161,6 +161,34 @@ func BenchmarkSignatureXXH64(b *testing.B) {
 	}
 }
 
+// BenchmarkSignatureReader measures the streaming reader path (used by shuttle).
+// Tests md5 with AVX2 across typical shuttle block sizes.
+func BenchmarkSignatureReader(b *testing.B) {
+	sizes := []struct {
+		name string
+		data int64
+		bs   int32
+	}{
+		{"10MB_700B", 10 * 1024 * 1024, 700},
+		{"10MB_32KB", 10 * 1024 * 1024, 32 * 1024},
+		{"10MB_128KB", 10 * 1024 * 1024, 128 * 1024},
+		{"100MB_700B", 100 * 1024 * 1024, 700},
+		{"100MB_128KB", 100 * 1024 * 1024, 128 * 1024},
+	}
+	for _, sz := range sizes {
+		data := make([]byte, sz.data)
+		rand.Read(data)
+		b.Run(sz.name, func(b *testing.B) {
+			b.SetBytes(sz.data)
+			b.ReportAllocs()
+			for i := 0; i < b.N; i++ {
+				r := bytes.NewReader(data)
+				GenerateSignatureReader(r, sz.data, sz.bs, "md5")
+			}
+		})
+	}
+}
+
 func BenchmarkSearch(b *testing.B) {
 	basis := make([]byte, 1024*1024) // 1MB
 	rand.Read(basis)

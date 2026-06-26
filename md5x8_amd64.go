@@ -16,6 +16,11 @@ import (
 //go:noescape
 func md5x8core(x *[16][8]uint32, state *[4][8]uint32)
 
+// MD5x8CoreForBench is an exported wrapper for benchmarking the pure AVX2 core.
+func MD5x8CoreForBench(x *[16][8]uint32, state *[4][8]uint32) {
+	md5x8core(x, state)
+}
+
 // md5x8transpose builds 16 transposed message words from contiguous buffer.
 // buf: [8][64]byte — block0, block1, ..., block7
 // x: output [16][8]uint32
@@ -23,11 +28,11 @@ func md5x8core(x *[16][8]uint32, state *[4][8]uint32)
 //go:noescape
 func md5x8transpose(buf *[8][64]byte, x *[16][8]uint32)
 
-// md5x8LoadTranspose loads 64 bytes from 8 scattered block positions and
-// transposes directly into 16 transposed YMM words, eliminating the intermediate buf copy.
+// md5x8LoadTransposeGather uses VPGATHERDD to load+transpose 8 scattered blocks.
+// Faster than md5x8LoadTranspose (~30 vs ~288 instructions per chunk).
 //
 //go:noescape
-func md5x8LoadTranspose(data []byte, offsets *[8]int, chunk int, x *[16][8]uint32)
+func md5x8LoadTransposeGather(data []byte, offsets *[8]int, chunk int, x *[16][8]uint32)
 
 // md5x8available reports whether AVX2 is supported.
 func md5x8available() bool {
@@ -55,9 +60,9 @@ func md5Hash8wayAVX2(data []byte, offsets [8]int, lengths [8]int, out *[8][16]by
 	var x [16][8]uint32
 
 	// Phase 1: 8-way AVX2 for common full chunks.
-	// Uses md5x8LoadTranspose to load+transpose in one asm step — no buf copy needed.
+	// Uses VPGATHERDD-based load+transpose for faster scattered access.
 	for chunk := 0; chunk < minFullChunks; chunk++ {
-		md5x8LoadTranspose(data, &offsets, chunk, &x)
+		md5x8LoadTransposeGather(data, &offsets, chunk, &x)
 		md5x8core(&x, &state)
 	}
 

@@ -1,0 +1,10 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "go test md5x8",
+			"type": "shell",
+			"command": "go test -v -run \"TestMD5x8|TestAVX2Parity|TestGenerateSignature|TestDelta\" -count=1 ./..."
+		}
+	]
+}

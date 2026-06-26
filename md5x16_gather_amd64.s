@@ -1,0 +1,115 @@
+// md5x16_gather_amd64.s — VPGATHERDD-based 16-block load+transpose.
+// Uses AVX512 k-mask + ZMM VSIB index (same approach as minio/md5-simd block16).
+
+#include "textflag.h"
+
+// func md5x16LoadTransposeGather(data []byte, offsets *[16]int, chunk int, x *[16][16]uint32)
+TEXT ·md5x16LoadTransposeGather(SB), NOSPLIT, $128-48
+	MOVQ data+0(FP), R8       // R8 = data base
+	MOVQ offsets+24(FP), R9    // R9 = &offsets[0]
+	MOVQ chunk+32(FP), R10     // R10 = chunk index
+	MOVQ x+40(FP), R11         // R11 = x output
+
+	// CX = chunk * 64
+	MOVQ R10, CX
+	SHLQ $6, CX
+
+	// Build 16 indices on stack: index[b] = int32(offsets[b] + chunk*64)
+	MOVQ 0(R9), R12; ADDQ CX, R12; MOVL R12, (SP)
+	MOVQ 8(R9), R13; ADDQ CX, R13; MOVL R13, 4(SP)
+	MOVQ 16(R9), R14; ADDQ CX, R14; MOVL R14, 8(SP)
+	MOVQ 24(R9), R15; ADDQ CX, R15; MOVL R15, 12(SP)
+	MOVQ 32(R9), AX;  ADDQ CX, AX;  MOVL AX, 16(SP)
+	MOVQ 40(R9), BX;  ADDQ CX, BX;  MOVL BX, 20(SP)
+	MOVQ 48(R9), DX;  ADDQ CX, DX;  MOVL DX, 24(SP)
+	MOVQ 56(R9), DI;  ADDQ CX, DI;  MOVL DI, 28(SP)
+	MOVQ 64(R9), R12; ADDQ CX, R12; MOVL R12, 32(SP)
+	MOVQ 72(R9), R13; ADDQ CX, R13; MOVL R13, 36(SP)
+	MOVQ 80(R9), R14; ADDQ CX, R14; MOVL R14, 40(SP)
+	MOVQ 88(R9), R15; ADDQ CX, R15; MOVL R15, 44(SP)
+	MOVQ 96(R9), AX;  ADDQ CX, AX;  MOVL AX, 48(SP)
+	MOVQ 104(R9), BX; ADDQ CX, BX;  MOVL BX, 52(SP)
+	MOVQ 112(R9), DX; ADDQ CX, DX;  MOVL DX, 56(SP)
+	MOVQ 120(R9), DI; ADDQ CX, DI;  MOVL DI, 60(SP)
+
+	// Load indices into Z0 (16 × int32)
+	LEAQ (SP), R12
+	VMOVDQU32 (R12), Z0
+
+	// K1 = all-ones (16 lanes active)
+	KXNORW K1, K1, K1
+
+	// Pre-load word offset constants
+	VMOVDQU32 WORD16_4<>(SB), Z2
+	VMOVDQU32 WORD16_8<>(SB), Z3
+	VMOVDQU32 WORD16_12<>(SB), Z4
+	VMOVDQU32 WORD16_16<>(SB), Z5
+	VMOVDQU32 WORD16_20<>(SB), Z6
+	VMOVDQU32 WORD16_24<>(SB), Z7
+
+	// Word 0: gather directly
+	VPGATHERDD (R8)(Z0*1), K1, Z10
+	VMOVDQU32 Z10, 0(R11)
+
+	// Words 1-5: add offset, gather, store
+	VPADDD Z0, Z2, Z20; VPGATHERDD (R8)(Z20*1), K1, Z10; VMOVDQU32 Z10, 64(R11)
+	VPADDD Z0, Z3, Z20; VPGATHERDD (R8)(Z20*1), K1, Z10; VMOVDQU32 Z10, 128(R11)
+	VPADDD Z0, Z4, Z20; VPGATHERDD (R8)(Z20*1), K1, Z10; VMOVDQU32 Z10, 192(R11)
+	VPADDD Z0, Z5, Z20; VPGATHERDD (R8)(Z20*1), K1, Z10; VMOVDQU32 Z10, 256(R11)
+	VPADDD Z0, Z6, Z20; VPGATHERDD (R8)(Z20*1), K1, Z10; VMOVDQU32 Z10, 320(R11)
+	VPADDD Z0, Z7, Z20; VPGATHERDD (R8)(Z20*1), K1, Z10; VMOVDQU32 Z10, 384(R11)
+
+	// Reload more constants for words 6-15
+	VMOVDQU32 WORD16_28<>(SB), Z2
+	VMOVDQU32 WORD16_32<>(SB), Z3
+	VMOVDQU32 WORD16_36<>(SB), Z4
+	VMOVDQU32 WORD16_40<>(SB), Z5
+	VMOVDQU32 WORD16_44<>(SB), Z6
+	VMOVDQU32 WORD16_48<>(SB), Z7
+
+	VPADDD Z0, Z2, Z20; VPGATHERDD (R8)(Z20*1), K1, Z10; VMOVDQU32 Z10, 448(R11)
+	VPADDD Z0, Z3, Z20; VPGATHERDD (R8)(Z20*1), K1, Z10; VMOVDQU32 Z10, 512(R11)
+	VPADDD Z0, Z4, Z20; VPGATHERDD (R8)(Z20*1), K1, Z10; VMOVDQU32 Z10, 576(R11)
+	VPADDD Z0, Z5, Z20; VPGATHERDD (R8)(Z20*1), K1, Z10; VMOVDQU32 Z10, 640(R11)
+	VPADDD Z0, Z6, Z20; VPGATHERDD (R8)(Z20*1), K1, Z10; VMOVDQU32 Z10, 704(R11)
+	VPADDD Z0, Z7, Z20; VPGATHERDD (R8)(Z20*1), K1, Z10; VMOVDQU32 Z10, 768(R11)
+
+	// Reload for words 12-15
+	VMOVDQU32 WORD16_52<>(SB), Z2
+	VMOVDQU32 WORD16_56<>(SB), Z3
+	VMOVDQU32 WORD16_60<>(SB), Z4
+
+	VPADDD Z0, Z2, Z20; VPGATHERDD (R8)(Z20*1), K1, Z10; VMOVDQU32 Z10, 832(R11)
+	VPADDD Z0, Z3, Z20; VPGATHERDD (R8)(Z20*1), K1, Z10; VMOVDQU32 Z10, 896(R11)
+	VPADDD Z0, Z4, Z20; VPGATHERDD (R8)(Z20*1), K1, Z10; VMOVDQU32 Z10, 960(R11)
+
+	VZEROUPPER
+	RET
+
+// 16-way broadcast word offset constants (64 bytes each)
+#define WORD16(name, val) \
+	DATA name<>+0(SB)/4, $val; DATA name<>+4(SB)/4, $val; \
+	DATA name<>+8(SB)/4, $val; DATA name<>+12(SB)/4, $val; \
+	DATA name<>+16(SB)/4, $val; DATA name<>+20(SB)/4, $val; \
+	DATA name<>+24(SB)/4, $val; DATA name<>+28(SB)/4, $val; \
+	DATA name<>+32(SB)/4, $val; DATA name<>+36(SB)/4, $val; \
+	DATA name<>+40(SB)/4, $val; DATA name<>+44(SB)/4, $val; \
+	DATA name<>+48(SB)/4, $val; DATA name<>+52(SB)/4, $val; \
+	DATA name<>+56(SB)/4, $val; DATA name<>+60(SB)/4, $val; \
+	GLOBL name<>(SB), RODATA|NOPTR, $64
+
+WORD16(WORD16_4, 4)
+WORD16(WORD16_8, 8)
+WORD16(WORD16_12, 12)
+WORD16(WORD16_16, 16)
+WORD16(WORD16_20, 20)
+WORD16(WORD16_24, 24)
+WORD16(WORD16_28, 28)
+WORD16(WORD16_32, 32)
+WORD16(WORD16_36, 36)
+WORD16(WORD16_40, 40)
+WORD16(WORD16_44, 44)
+WORD16(WORD16_48, 48)
+WORD16(WORD16_52, 52)
+WORD16(WORD16_56, 56)
+WORD16(WORD16_60, 60)

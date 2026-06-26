@@ -442,3 +442,122 @@ func BenchmarkMD5x8_Bulk(b *testing.B) {
 		md5Hash8wayAVX2(data, offsets, lengths, &out)
 	}
 }
+
+// BenchmarkMD5x8Core_Raw measures PURE md5x8core throughput — no load-transpose,
+// no checksum, just ZMM→ZMM transform. Pre-builds transposed x matrix once.
+func BenchmarkMD5x8Core_Raw(b *testing.B) {
+	if !md5x8available() {
+		b.Skip("AVX2 not available")
+	}
+
+	// Prepare one transposed chunk (16 words × 8 lanes)
+	var x [16][8]uint32
+	for w := 0; w < 16; w++ {
+		for ln := 0; ln < 8; ln++ {
+			x[w][ln] = uint32(w*8 + ln)
+		}
+	}
+
+	var state [4][8]uint32
+	state[0] = [8]uint32{0x67452301, 0x67452301, 0x67452301, 0x67452301, 0x67452301, 0x67452301, 0x67452301, 0x67452301}
+	state[1] = [8]uint32{0xefcdab89, 0xefcdab89, 0xefcdab89, 0xefcdab89, 0xefcdab89, 0xefcdab89, 0xefcdab89, 0xefcdab89}
+	state[2] = [8]uint32{0x98badcfe, 0x98badcfe, 0x98badcfe, 0x98badcfe, 0x98badcfe, 0x98badcfe, 0x98badcfe, 0x98badcfe}
+	state[3] = [8]uint32{0x10325476, 0x10325476, 0x10325476, 0x10325476, 0x10325476, 0x10325476, 0x10325476, 0x10325476}
+
+	b.SetBytes(64) // one 64-byte block × 8 lanes = 512B per call
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		md5x8core(&x, &state)
+	}
+}
+
+// BenchmarkMD5x16Core_Raw measures PURE md5x16core throughput (AVX512).
+func BenchmarkMD5x16Core_Raw(b *testing.B) {
+	if !md5x16available() {
+		b.Skip("AVX512 not available")
+	}
+
+	var x [16][16]uint32
+	for w := 0; w < 16; w++ {
+		for ln := 0; ln < 16; ln++ {
+			x[w][ln] = uint32(w*16 + ln)
+		}
+	}
+
+	var state [4][16]uint32
+	for ln := 0; ln < 16; ln++ {
+		state[0][ln] = 0x67452301
+		state[1][ln] = 0xefcdab89
+		state[2][ln] = 0x98badcfe
+		state[3][ln] = 0x10325476
+	}
+
+	b.SetBytes(int64(64 * 16)) // 1024B per call (16 lanes × 64B)
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		md5x16core(&x, &state)
+	}
+}
+
+// BenchmarkMD5x8Core_Bulk calls md5x8core 1000 times in a tight Go loop
+// (amortizes Go-call overhead). Equivalent to md5-simd's BenchmarkBlock8-4.
+func BenchmarkMD5x8Core_Bulk(b *testing.B) {
+	if !md5x8available() {
+		b.Skip("AVX2 not available")
+	}
+
+	var x [16][8]uint32
+	for w := 0; w < 16; w++ {
+		for ln := 0; ln < 8; ln++ {
+			x[w][ln] = uint32(w*8 + ln)
+		}
+	}
+
+	var state [4][8]uint32
+	state[0] = [8]uint32{0x67452301, 0x67452301, 0x67452301, 0x67452301, 0x67452301, 0x67452301, 0x67452301, 0x67452301}
+	state[1] = [8]uint32{0xefcdab89, 0xefcdab89, 0xefcdab89, 0xefcdab89, 0xefcdab89, 0xefcdab89, 0xefcdab89, 0xefcdab89}
+	state[2] = [8]uint32{0x98badcfe, 0x98badcfe, 0x98badcfe, 0x98badcfe, 0x98badcfe, 0x98badcfe, 0x98badcfe, 0x98badcfe}
+	state[3] = [8]uint32{0x10325476, 0x10325476, 0x10325476, 0x10325476, 0x10325476, 0x10325476, 0x10325476, 0x10325476}
+
+	const N = 1000
+	bytesPerOp := int64(N * 64 * 8) // N chunks × 64B × 8 lanes
+	b.SetBytes(bytesPerOp)
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		for j := 0; j < N; j++ {
+			md5x8core(&x, &state)
+		}
+	}
+}
+
+// BenchmarkMD5x16Core_Bulk same but for AVX512.
+func BenchmarkMD5x16Core_Bulk(b *testing.B) {
+	if !md5x16available() {
+		b.Skip("AVX512 not available")
+	}
+
+	var x [16][16]uint32
+	for w := 0; w < 16; w++ {
+		for ln := 0; ln < 16; ln++ {
+			x[w][ln] = uint32(w*16 + ln)
+		}
+	}
+
+	var state [4][16]uint32
+	for ln := 0; ln < 16; ln++ {
+		state[0][ln] = 0x67452301
+		state[1][ln] = 0xefcdab89
+		state[2][ln] = 0x98badcfe
+		state[3][ln] = 0x10325476
+	}
+
+	const N = 1000
+	bytesPerOp := int64(N * 64 * 16) // N chunks × 64B × 16 lanes
+	b.SetBytes(bytesPerOp)
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		for j := 0; j < N; j++ {
+			md5x16core(&x, &state)
+		}
+	}
+}

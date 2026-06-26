@@ -4,8 +4,6 @@ import (
 	"bytes"
 	"hash"
 	"io"
-	"runtime"
-	"sync"
 )
 
 // BlockSum represents a single block checksum from file B.
@@ -245,229 +243,30 @@ func (me *MatchEngine) computeStrong(data []byte) []byte {
 	return h.Sum(nil)
 }
 
-// GenerateSignature generates block signatures for file B (called by the receiver).
-// GenerateSignature 为文件 B 生成块签名（接收端调用）。
+// GenerateSignature generates block signatures from in-memory data.
+// GenerateSignature 从内存数据生成块签名。
 //
-// This fast path directly slices data in memory and pre-allocates a single
-// Sum2 buffer to avoid per-block heap allocations.  For streaming I/O use
-// GenerateSignatureReader.
+// This is a convenience wrapper around GenerateSignatureReader.
+// For large files, prefer GenerateSignatureReader to stream from disk
+// and avoid holding the entire file in memory.
 func GenerateSignature(data []byte, blockSize int32, strongAlgo string) *Signature {
-	algo, err := GetAlgo(strongAlgo)
-	if err != nil {
-		algo = MustGet(GetDefault())
-	}
-
-	fileSize := int64(len(data))
-	numBlocks := int((fileSize + int64(blockSize) - 1) / int64(blockSize))
-	hashLen := algo.Length
-
-	// Pre-allocate one contiguous buffer for all Sum2 slices.
-	// Eliminates ~N heap allocations for N blocks.
-	sumBuf := make([]byte, numBlocks*hashLen)
-
-	sig := &Signature{
-		BlockSize: blockSize,
-		FileSize:  fileSize,
-		BlockSums: make([]BlockSum, numBlocks),
-	}
-
-	// AVX2 8-way md5 fast path: batch 8 blocks at a time in SIMD.
-	if strongAlgo == "md5" && md5x8available() {
-		const batchSize = 8
-		for base := 0; base < numBlocks; base += batchSize {
-			n := batchSize
-			if base+n > numBlocks {
-				n = numBlocks - base
-			}
-			if n == batchSize {
-				var off8, len8 [8]int
-				for b := 0; b < 8; b++ {
-					idx := base + b
-					o := int64(idx) * int64(blockSize)
-					r := fileSize - o
-					if r > int64(blockSize) {
-						r = int64(blockSize)
-					}
-					off8[b] = int(o)
-					len8[b] = int(r)
-				}
-				var out8 [8][16]byte
-				md5Hash8wayAVX2(data, off8, len8, &out8)
-				for b := 0; b < 8; b++ {
-					idx := base + b
-					s := idx * hashLen
-					copy(sumBuf[s:], out8[b][:])
-					sig.BlockSums[idx] = BlockSum{
-						Index:  idx,
-						Sum1:   Checksum1(data[off8[b] : off8[b]+len8[b]]),
-						Sum2:   sumBuf[s : s+hashLen],
-						Offset: int64(off8[b]),
-						Length: int32(len8[b]),
-					}
-				}
-			} else {
-				for b := 0; b < n; b++ {
-					idx := base + b
-					off := int64(idx) * int64(blockSize)
-					remain := fileSize - off
-					if remain > int64(blockSize) {
-						remain = int64(blockSize)
-					}
-					block := data[off : off+remain]
-					start := idx * hashLen
-					algo.FastSum(sumBuf[start:start+hashLen], block)
-					sig.BlockSums[idx] = BlockSum{
-						Index:  idx,
-						Sum1:   Checksum1(block),
-						Sum2:   sumBuf[start : start+hashLen],
-						Offset: off,
-						Length: int32(len(block)),
-					}
-				}
-			}
-		}
-		return sig
-	}
-
-	// Fast path: use algorithm-specific zero-alloc Sum (e.g. md5.Sum).
-	// Avoids hash.Hash interface dispatch + Reset/Write/Sum overhead.
-	if algo.FastSum != nil {
-		for i := 0; i < numBlocks; i++ {
-			off := int64(i) * int64(blockSize)
-			remain := fileSize - off
-			if remain > int64(blockSize) {
-				remain = int64(blockSize)
-			}
-			block := data[off : off+remain]
-			start := i * hashLen
-
-			sig.BlockSums[i] = BlockSum{
-				Index:  i,
-				Sum1:   Checksum1(block),
-				Sum2:   algo.FastSum(sumBuf[start:start+hashLen], block),
-				Offset: off,
-				Length: int32(len(block)),
-			}
-		}
-	} else {
-		h := algo.New() // reuse single hash instance
-		for i := 0; i < numBlocks; i++ {
-			off := int64(i) * int64(blockSize)
-			remain := fileSize - off
-			if remain > int64(blockSize) {
-				remain = int64(blockSize)
-			}
-			block := data[off : off+remain]
-
-			h.Reset()
-			h.Write(block)
-			start := i * hashLen
-			sum2 := h.Sum(sumBuf[start : start : start+hashLen])
-
-			sig.BlockSums[i] = BlockSum{
-				Index:  i,
-				Sum1:   Checksum1(block),
-				Sum2:   sum2,
-				Offset: off,
-				Length: int32(len(block)),
-			}
-		}
-	}
-
-	return sig
+	return GenerateSignatureReader(bytes.NewReader(data), int64(len(data)), blockSize, strongAlgo)
 }
 
-// GenerateSignatureParallel generates block signatures using multiple goroutines.
-// For large files (>1MB) this can be 2-4× faster than the serial version.
-// Uses the same algorithm as GenerateSignature, just parallelized across blocks.
-// GenerateSignatureParallel 使用多 goroutine 并行生成块签名。
+// GenerateSignatureParallel generates block signatures from in-memory data.
+// GenerateSignatureParallel 从内存数据并行生成块签名。
+//
+// Delegates to GenerateSignatureReader (AVX512 → AVX2 → scalar).
+// For large files, prefer GenerateSignatureReader directly.
 func GenerateSignatureParallel(data []byte, blockSize int32, strongAlgo string) *Signature {
-	algo, err := GetAlgo(strongAlgo)
-	if err != nil {
-		algo = MustGet(GetDefault())
-	}
-
-	fileSize := int64(len(data))
-	numBlocks := int((fileSize + int64(blockSize) - 1) / int64(blockSize))
-
-	sig := &Signature{
-		BlockSize: blockSize,
-		FileSize:  fileSize,
-		BlockSums: make([]BlockSum, numBlocks),
-	}
-
-	// Pre-allocate one contiguous buffer for all Sum2 slices.
-	sumBuf := make([]byte, numBlocks*algo.Length)
-
-	workers := runtime.GOMAXPROCS(0)
-	chunkSize := (numBlocks + workers - 1) / workers
-
-	var wg sync.WaitGroup
-	for w := 0; w < workers; w++ {
-		start := w * chunkSize
-		end := start + chunkSize
-		if end > numBlocks {
-			end = numBlocks
-		}
-		if start >= end {
-			continue
-		}
-
-		wg.Add(1)
-		go func(start, end int) {
-			defer wg.Done()
-			if algo.FastSum != nil {
-				for i := start; i < end; i++ {
-					off := int64(i) * int64(blockSize)
-					remain := fileSize - off
-					if remain > int64(blockSize) {
-						remain = int64(blockSize)
-					}
-					block := data[off : off+remain]
-					startIdx := i * algo.Length
-
-					sig.BlockSums[i] = BlockSum{
-						Index:  i,
-						Sum1:   Checksum1(block),
-						Sum2:   algo.FastSum(sumBuf[startIdx:startIdx+algo.Length], block),
-						Offset: off,
-						Length: int32(len(block)),
-					}
-				}
-			} else {
-				h := algo.New()
-				for i := start; i < end; i++ {
-					off := int64(i) * int64(blockSize)
-					remain := fileSize - off
-					if remain > int64(blockSize) {
-						remain = int64(blockSize)
-					}
-					block := data[off : off+remain]
-
-					h.Reset()
-					h.Write(block)
-					startIdx := i * algo.Length
-					sum2 := h.Sum(sumBuf[startIdx : startIdx : startIdx+algo.Length])
-
-					sig.BlockSums[i] = BlockSum{
-						Index:  i,
-						Sum1:   Checksum1(block),
-						Sum2:   sum2,
-						Offset: off,
-						Length: int32(len(block)),
-					}
-				}
-			}
-		}(start, end)
-	}
-	wg.Wait()
-
-	return sig
+	return GenerateSignature(data, blockSize, strongAlgo)
 }
 
 // GenerateSignatureReader generates block signatures from an io.Reader,
 // avoiding loading the entire file into memory.
+// Uses 8-way AVX2 acceleration for md5 when available.
 // GenerateSignatureReader 从 io.Reader 流式生成块签名，避免全量读入内存。
+// md5 + AVX512 可用时使用 16 路 SIMD；否则 AVX2 8 路；否则标量回退。
 func GenerateSignatureReader(r io.Reader, fileSize int64, blockSize int32, strongAlgo string) *Signature {
 	sig := &Signature{
 		BlockSize: blockSize,
@@ -482,10 +281,156 @@ func GenerateSignatureReader(r io.Reader, fileSize int64, blockSize int32, stron
 		algo = MustGet(GetDefault())
 	}
 
-	buf := make([]byte, blockSize)
 	// Pre-allocate one contiguous buffer for all Sum2 slices.
 	sumBuf := make([]byte, int(numBlocks)*algo.Length)
 
+	// AVX512 16-way md5 fast path (blockSize >= 2KB only).
+	// AVX512 gather overhead dominates for small blocks; threshold empirically
+	// determined on Intel Xeon Platinum @ 2.5GHz (crossover at ~1400 bytes).
+	if strongAlgo == "md5" && md5x16available() && blockSize >= 2048 {
+		const batchSize = 16
+		batchBuf := make([]byte, batchSize*int(blockSize))
+
+		for base := int64(0); base < numBlocks; base += batchSize {
+			n := batchSize
+			if base+int64(n) > numBlocks {
+				n = int(numBlocks - base)
+			}
+
+			total := 0
+			for b := 0; b < n; b++ {
+				remain := fileSize - (base+int64(b))*int64(blockSize)
+				if remain > int64(blockSize) {
+					remain = int64(blockSize)
+				}
+				if _, err := io.ReadFull(r, batchBuf[total:total+int(remain)]); err != nil {
+					return sig
+				}
+				total += int(remain)
+			}
+
+			if n == batchSize {
+				var off16, len16 [16]int
+				var out16 [16][16]byte
+				off := 0
+				for b := 0; b < 16; b++ {
+					off16[b] = off
+					len16[b] = int(blockSize)
+					off += int(blockSize)
+				}
+				md5Hash16wayAVX512(batchBuf, off16, len16, &out16)
+				for b := 0; b < 16; b++ {
+					idx := int(base) + b
+					start := idx * algo.Length
+					copy(sumBuf[start:], out16[b][:])
+					sig.BlockSums[idx] = BlockSum{
+						Index:  idx,
+						Sum1:   Checksum1(batchBuf[b*int(blockSize) : (b+1)*int(blockSize)]),
+						Sum2:   sumBuf[start : start+algo.Length],
+						Offset: (base + int64(b)) * int64(blockSize),
+						Length: blockSize,
+					}
+				}
+			} else {
+				off := 0
+				for b := 0; b < n; b++ {
+					idx := int(base) + b
+					remain := fileSize - int64(idx)*int64(blockSize)
+					if remain > int64(blockSize) {
+						remain = int64(blockSize)
+					}
+					block := batchBuf[off : off+int(remain)]
+					start := idx * algo.Length
+					algo.FastSum(sumBuf[start:start+algo.Length], block)
+					sig.BlockSums[idx] = BlockSum{
+						Index:  idx,
+						Sum1:   Checksum1(block),
+						Sum2:   sumBuf[start : start+algo.Length],
+						Offset: int64(idx) * int64(blockSize),
+						Length: int32(len(block)),
+					}
+					off += int(remain)
+				}
+			}
+		}
+		return sig
+	}
+
+	// AVX2 8-way md5 fast path: batch-read 8 blocks at a time for SIMD.
+	if strongAlgo == "md5" && md5x8available() {
+		const batchSize = 8
+		batchBuf := make([]byte, batchSize*int(blockSize))
+
+		for base := int64(0); base < numBlocks; base += batchSize {
+			n := batchSize
+			if base+int64(n) > numBlocks {
+				n = int(numBlocks - base)
+			}
+
+			// Read n blocks into batchBuf
+			total := 0
+			for b := 0; b < n; b++ {
+				remain := fileSize - (base+int64(b))*int64(blockSize)
+				if remain > int64(blockSize) {
+					remain = int64(blockSize)
+				}
+				if _, err := io.ReadFull(r, batchBuf[total:total+int(remain)]); err != nil {
+					return sig
+				}
+				total += int(remain)
+			}
+
+			if n == batchSize {
+				// 8 full blocks → AVX2 SIMD
+				var off8, len8 [8]int
+				off := 0
+				for b := 0; b < 8; b++ {
+					off8[b] = off
+					len8[b] = int(blockSize)
+					off += int(blockSize)
+				}
+				var out8 [8][16]byte
+				md5Hash8wayAVX2(batchBuf, off8, len8, &out8)
+				for b := 0; b < 8; b++ {
+					idx := int(base) + b
+					start := idx * algo.Length
+					copy(sumBuf[start:], out8[b][:])
+					sig.BlockSums[idx] = BlockSum{
+						Index:  idx,
+						Sum1:   Checksum1(batchBuf[b*int(blockSize) : (b+1)*int(blockSize)]),
+						Sum2:   sumBuf[start : start+algo.Length],
+						Offset: (base + int64(b)) * int64(blockSize),
+						Length: blockSize,
+					}
+				}
+			} else {
+				// Tail < 8 blocks → scalar fallback
+				off := 0
+				for b := 0; b < n; b++ {
+					idx := int(base) + b
+					remain := fileSize - int64(idx)*int64(blockSize)
+					if remain > int64(blockSize) {
+						remain = int64(blockSize)
+					}
+					block := batchBuf[off : off+int(remain)]
+					start := idx * algo.Length
+					algo.FastSum(sumBuf[start:start+algo.Length], block)
+					sig.BlockSums[idx] = BlockSum{
+						Index:  idx,
+						Sum1:   Checksum1(block),
+						Sum2:   sumBuf[start : start+algo.Length],
+						Offset: int64(idx) * int64(blockSize),
+						Length: int32(len(block)),
+					}
+					off += int(remain)
+				}
+			}
+		}
+		return sig
+	}
+
+	// Scalar path: non-md5 algorithms or platforms without AVX2.
+	buf := make([]byte, blockSize)
 	if algo.FastSum != nil {
 		for i := int64(0); i < numBlocks; i++ {
 			remain := fileSize - i*int64(blockSize)
