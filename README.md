@@ -100,9 +100,8 @@ go test -bench='BenchmarkSignature$|BenchmarkMD5x8_Bulk|BenchmarkChecksum1' -ben
 | `rolling_generic.go` | Portable pure-Go checksum (non-amd64) |
 | `md5x8_amd64.s` | **Generated** — 64-step unrolled AVX2 MD5 core (8-way) |
 | `md5x8_transpose_fast_amd64.s` | Register-shuffle transpose (~80 vs ~320 VPINSRD instructions) |
-| `md5x8_transpose.s` | Contiguous 8×64→16 transposed YMMs (tail finalization only) |
+| `md5x8_transpose.s` | Contiguous 8×64→16 transposed YMMs (tail finalization) |
 | `md5x8_load_transpose_amd64.s` | VPINSRD scalar load+transpose (~288 insn/chunk, correct fallback) |
-| `md5x8_transpose_fast_amd64.s` | Register-shuffle transpose (~80 vs ~320 VPINSRD instructions) |
 | `md5x8_amd64.go` | Go-side glue: `md5Hash8wayAVX2`, `md5Finalize8way` |
 | `md5x8_common.go` | Shared MD5 constants + `md5FinalLane` |
 | `md5x8_generic.go` | Stubs for non-amd64 (darwin/arm64) |
