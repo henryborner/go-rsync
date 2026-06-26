@@ -23,7 +23,7 @@
 | Feature | go-rsync |
 |---------|-----------|
 | Data type | `uint8` (0..255) |
-| CHAR_OFFSET | 31（`Checksum1` 在 asm 内处理；私有 `checksum1` 在 Go 层后修正） |
+| CHAR_OFFSET | 31（比 rsync 默认的 0 更强，但不兼容标准 rsync。`Checksum1` 在 asm 内处理；私有 `checksum1` 在 Go 层后修正） |
 | Return format | `Checksum1` 返回打包 `uint32`；`checksum1` 返回两个 `uint32` 标量 |
 | s1 reduction | VPMADDWD pair-sum（全 32 位） |
 | s2 weighted reduction | VPMADDWD pair-sum per half（全 32 位），无 VPUNPCK |
@@ -185,11 +185,11 @@ Go Plan 9 对**所有**非交换 SIMD 指令交换 src1/src2：
 | v1 | 底部加载消除 Y9/Y10 + VPBROADCASTD 修复 | 28 | 27.2 GB/s | 51.5 GB/s |
 | v2 | VPADDW 先合并再扩展（省 6 条指令） | 22 | 35.8 GB/s | 64.1 GB/s |
 | v3 | PREFETCHT0 + 越界守卫（安全底部加载） | 22 | 36.6 GB/s | 59.6 GB/s |
-| **v4** | **s1 用 VPMADDWD pair-sum**（省 2 条指令） | **20** | **42.4 GB/s** | **69.2 GB/s** |
+| **v4** | **s1 用 VPMADDWD pair-sum**（省 2 条指令） | **20** | **—** | **69.2 GB/s** |
 | v5 | **s2 每半用 VPMADDWD** + asm 标量剩余 + 合并退出归约 | **19** | 35.1 GB/s | — |
 | **v6** | **CHAR_OFFSET + 打包在 asm 内**（`checksum1PackedAVX2`），合并 ones 表 | **19** | **37.4 GB/s** | — |
 
-**累计**：28→19 条指令（−32%），Xeon 1KB 吞吐 +38%。64KB 与 rsync 差距在 1% 以内。
+**累计**：28→19 条指令（−32%），Xeon 1KB 吞吐 +38%。64KB 与 rsync 差距在 1.4% 以内。
 
 > **VPSRLD 死胡同**：尝试用 VPSRLD 做打包归约（3→2 条指令）。因高 16 位有垃圾数据导致 s1 放大 32768×。否决——`Roll()` 需要完整 32 位正确性。
 

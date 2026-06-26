@@ -15,7 +15,7 @@ Used in production by [Shuttle](https://github.com/henryborner/shuttle), a Windo
 - **🔌 Pluggable strong hash** — md5, sha256, xxh64 built-in. Register your own with `FastSum` support.
 - **📡 Binary wire protocol** — compact big-endian encoding, ready for SSH pipes.
 - **💧 Streaming I/O** — generate signatures from `io.Reader`, decode instructions one-at-a-time, minimal memory.
-- **🔗 rsync-compatible checksum** — same CHAR_OFFSET=31, same uint32 natural-overflow arithmetic.
+- **🔗 rsync-derived checksum** — CHAR_OFFSET=31 (stronger than rsync's default 0), same uint32 natural-overflow arithmetic.
 - **🧪 Well tested** — roundtrip, identical-file, parity tests (AVX2 vs SSE2 vs pure Go), MD5 8-way + 16-way validation (AVX2 + AVX-512 vs stdlib).
 
 ## 📦 Install
@@ -70,9 +70,9 @@ func main() {
 
 | Benchmark | Time | Throughput |
 |-----------|------|------------|
-| `MD5x8_Bulk` (AVX2 8-way) | 11.5 µs | **2.84 GB/s** |
-| `MD5x8Core_Bulk` (AVX2 raw) | 145 µs | 3.54 GB/s |
-| `MD5x16Core_Bulk` (AVX-512 raw) | 94 µs | **10.86 GB/s** 🔥 |
+| `MD5x8_Bulk` (AVX2 8-way, 32KB) | 11.5 µs | **2.84 GB/s** |
+| `MD5x8Core_Bulk` (AVX2 raw, 1000×64B×8) | 145 µs | 3.54 GB/s |
+| `MD5x16Core_Bulk` (AVX-512 raw, 1000×64B×16) | 94 µs | **10.86 GB/s** 🔥 |
 | `SignatureReader/10MB_32KB` | 2.88 ms | 3.64 GB/s |
 
 **Checksum1 (rolling weak checksum) throughput:**
@@ -83,7 +83,7 @@ func main() {
 | 64 KB | **69 GB/s** | 44 GB/s | 44 GB/s |
 | 1 MB | **51 GB/s** | 44 GB/s | — |
 
-> 64KB within 1% of rsync on Xeon. AVX-512 raw MD5 core hits 10.9 GB/s.
+> 64KB within 1.4% of rsync on Xeon. AVX-512 raw MD5 core hits 10.9 GB/s.
 
 Run on your own machine:
 
@@ -103,7 +103,7 @@ go test -bench='BenchmarkSignature$|BenchmarkMD5x8_Bulk|BenchmarkChecksum1' -ben
 | `rolling_amd64.s` | AVX2 checksum assembly (64B/iter) + `checksum1PackedAVX2` |
 | `rolling_sse2_amd64.s` | SSE2/SSSE3 checksum assembly (32B/iter) |
 | `rolling_fast_amd64.go` | Tiered dispatch: AVX2 → SSE2 → Go, inlined `Checksum1` |
-| `rolling_generic.go` | Portable pure-Go checksum (non-amd64) |
+| `rolling_generic.go` | Portable byte-by-byte checksum (non-amd64 fallback) |
 | `md5x8_amd64.s` | **Generated** — 64-step unrolled AVX2 MD5 core (8-way) |
 | `md5x8_transpose_fast_amd64.s` | Register-shuffle transpose (~80 vs ~320 VPINSRD instructions) |
 | `md5x8_transpose.s` | Contiguous 8×64→16 transposed YMMs (tail finalization) |
