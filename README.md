@@ -60,13 +60,20 @@ func main() {
 
 **AMD Ryzen 9 8940HX (Zen 4), single-threaded, 1MB data, blockSize≈700:**
 
-| Benchmark | Time | Throughput | Allocs |
-|-----------|------|------------|--------|
-| `GenerateSignature` (md5) | ~447 µs | **2.35 GB/s** | 3 |
-| `GenerateSignature` (xxh64) | ~318 µs | 3.30 GB/s | — |
-| `GenerateSignature` (sha256) | ~819 µs | 1.28 GB/s | — |
-| `MD5x8_Bulk` (raw AVX2 core) | 10516 ns/op | **5950 MB/s** | 0 |
-| `MD5x16_Bulk` (raw AVX-512 core) | — | **10500 MB/s** | 0 |
+| Benchmark | Time | Throughput |
+|-----------|------|------------|
+| `GenerateSignature` (md5) | ~447 µs | **2.35 GB/s** |
+| `GenerateSignature` (xxh64) | ~318 µs | 3.30 GB/s |
+| `GenerateSignature` (sha256) | ~819 µs | 1.28 GB/s |
+
+**Intel Xeon Platinum @ 2.5GHz, AVX-512 enabled:**
+
+| Benchmark | Time | Throughput |
+|-----------|------|------------|
+| `MD5x8_Bulk` (AVX2 8-way) | 11.5 µs | **2.84 GB/s** |
+| `MD5x8Core_Bulk` (AVX2 raw) | 145 µs | 3.54 GB/s |
+| `MD5x16Core_Bulk` (AVX-512 raw) | 94 µs | **10.86 GB/s** 🔥 |
+| `SignatureReader/10MB_32KB` | 2.88 ms | 3.64 GB/s |
 
 **Checksum1 (rolling weak checksum) throughput:**
 
@@ -76,8 +83,7 @@ func main() {
 | 64 KB | **69 GB/s** | 44 GB/s | 44 GB/s |
 | 1 MB | **51 GB/s** | 44 GB/s | — |
 
-> 64KB within 1% of rsync on Xeon. 1KB gap due to rsync's VPSRLD/VPSRLDQ exit-correction approach.
-> CHAR_OFFSET + packing done in assembly via `checksum1PackedAVX2`.
+> 64KB within 1% of rsync on Xeon. AVX-512 raw MD5 core hits 10.9 GB/s.
 
 Run on your own machine:
 
@@ -112,7 +118,7 @@ go test -bench='BenchmarkSignature$|BenchmarkMD5x8_Bulk|BenchmarkChecksum1' -ben
 | `md5x16_gather_amd64.s` | ZMM VPGATHERDD load+transpose |
 | `gen_md5x8/main.go` | Code generator for `md5x8_amd64.s` |
 | `gen_md5x16/main.go` | Code generator for `md5x16_amd64.s` |
-| `docs/md5-avx2-notes.md` | Maintenance guide for the AVX2 MD5 acceleration |
+| `docs/md5-avx2-notes.md` | Maintenance guide + **debugging journal** for AVX2/AVX-512 MD5 |
 
 ## 🔗 Related
 

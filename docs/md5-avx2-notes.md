@@ -101,6 +101,7 @@ cd gen_md5x16 && go run .   # → ../md5x16_amd64.s
 - [ ] `go vet .` — zero warnings
 - [ ] `go test -count=1 .` — all tests pass
 - [ ] `VZEROUPPER` before every `RET` in YMM/ZMM functions
+- [ ] VPGATHERDD mask reloaded before **every** gather (instruction zeros mask)
 - [ ] `//go:noescape` on all asm decls with pointer args
 - [ ] Slice args occupy 24 bytes in frame (ptr+len+cap), not 16
 - [ ] Non-amd64 build: `GOOS=darwin GOARCH=arm64 go build .` succeeds
@@ -126,3 +127,79 @@ cd gen_md5x16 && go run .   # → ../md5x16_amd64.s
   an editor, not shell redirection.
 - **Cross-compilation.**  `$env:GOOS` persists in PowerShell.  Clear with
   `$env:GOOS=""` after cross-compiling.
+
+## Debugging Incorrect MD5 Output
+
+A step-by-step account of the debugging process (2026-06-26), preserved as
+a reference for future SIMD work in Go Plan 9 assembly.
+
+### 1. Symptom: identical files produce 98% literal transfer
+
+`TestDeltaIdentical` showed `LiteralBytes = 50500/51200` (98.63%) instead of
+`<700`.  Search was finding almost no matches for identical data.
+
+### 2. Weak checksum vs strong checksum mismatch
+
+`Checksum1()` and `RollingSum.Value()` matched for all blocks.  The weak
+checksum path was correct.  But `sig.Sum2` (stored MD5) ≠ `md5.Sum()` —
+the two paths produced different strong hashes.  The AVX2 MD5 core was
+generating wrong signatures, so `computeStrong()` (standard `md5.New()`)
+could never match them in Search.
+
+### 3. Root cause: VPANDN operand order
+
+Go Plan 9 `VPANDN A,B,C` = `C = A &^ B` (Plan 9 semantics).
+Intel `VPANDN A,B,C` = `C = ~A & B` (Intel semantics).
+
+The code generator (`gen_md5x8/main.go`) was written with Intel semantics.
+All three rounds using VPANDN (R1, R2, R4) produced wrong F functions.
+
+**Fix**: swapped operand order in generator → regenerated `md5x8_amd64.s`.
+Verified with `TestVPANDN_Order` and `TestMD5x8_AVX2_Parity`.
+
+### 4. Secondary bug: VPGATHERDD mask zeroing
+
+VPGATHERDD zeros the mask register after execution (per Intel spec).
+The gather function set the all-ones mask once, then ran 16 gathers —
+only the first worked; all subsequent gathered zero data.
+
+**Fix**: pre-compute all-ones in a spare register (`VPCMPEQD Y3,Y3,Y3`),
+reload mask via `VMOVDQA Y3,Y2` before each gather.
+
+### 5. Tertiary bug: Go assembler VSIB encoding
+
+Go Plan 9's VPGATHERDD assembly encoding has multiple issues:
+- Base register: hardcoded to the first-encountered value; changing
+  R8/R12/BP at runtime has no effect.
+- VSIB displacement: produces wrong addresses.
+- Non-Y1 destination registers: may return zero data.
+- Scale factors ≠2: may not encode correctly.
+
+These were confirmed by exhaustive testing (scale=1/2/4 × byte/dword/word
+offsets × R8/R10/R12/BP base × LEAQ/ADDQ base modification).
+
+**Fix**: emit raw machine code via `BYTE` pseudo-instructions, completely
+bypassing the Go assembler for VPGATHERDD.  The 6-byte encoding is stable
+across Go versions since it's x86 machine code, not assembly syntax.
+
+### 6. AVX-512: VPTERNLOGD avoids VPANDN, same mask-zeroing issue
+
+AVX-512 uses `VPTERNLOGD` for round functions (no VPANDN), so the core
+was never affected.  But `md5x16_gather_amd64.s` had the same mask-zeroing
+bug plus non-compiling `#define` macros (Go asm doesn't support C
+preprocessor).
+
+**Fix**: expanded WORD16 macros manually to DATA/GLOBL declarations;
+added `KXNORW K1,K1,K1` before each VPGATHERDD.
+
+### Key takeaways
+
+1. **Test assembly against the standard library.**  `md5.Sum()` is the
+   ground truth.  `TestMD5x8_AVX2_Parity` now guards against regressions.
+2. **VPGATHERDD zeros the mask.**  Always reload before each gather.
+3. **Go Plan 9 operand order ≠ Intel.**  Always verify with a minimal
+   test before writing large assembly functions.
+4. **`BYTE` raw machine code is a viable escape hatch** when the assembler
+   has encoding bugs.  The machine code format is stable; the assembler isn't.
+5. **Pure-Go reference implementations are invaluable** for debugging.
+   `md5x8_purego.go` was essential for isolating each bug.
