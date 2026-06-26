@@ -98,6 +98,10 @@ func main() {
 
 	phys := func(idx int) string { return fmt.Sprintf("Z%d", idx) }
 
+	// Preload X[g0] before the step loop.
+	w("\tVMOVDQU32 %d(DI), Z9", gVals[0]*64)
+	w("")
+
 	for i := 0; i < 64; i++ {
 		g := gVals[i]
 		s := shifts[i]
@@ -112,39 +116,34 @@ func main() {
 		w("\t// Step %d: R%d g=%d s=%d T=0x%08x  (a=%s b=%s c=%s d=%s)",
 			i, round+1, g, s, T[i], rA, rB, rC, rD)
 
-		// Load X[g] into Z9.
-		// x has 16 words, each 512 bits (16 × uint32). Offset: g * 64 bytes.
-		w("\tVMOVDQU32 %d(DI), Z9", g*64)
-
-		// F function via VPTERNLOGD
+		// F function via VPTERNLOGD.  X[g] is already in Z9 (preloaded).
 		switch round {
 		case 0:
-			// F = (b&c) | (~b&d). Init Z10=d, then VPTERNLOGD $0xB8 (d,b,c)
 			w("\tVMOVDQA32 %s, Z10", rD)
 			w("\tVPTERNLOGD $0xB8, %s, %s, Z10", rB, rC)
-			// Z10 now holds F
 		case 1:
-			// F = (b&d) | (c&~d). Init Z10=d, then VPTERNLOGD $0xE2 (d,b,c)
 			w("\tVMOVDQA32 %s, Z10", rD)
 			w("\tVPTERNLOGD $0xE2, %s, %s, Z10", rB, rC)
 		case 2:
-			// F = b ^ c ^ d — simple XOR chain
 			w("\tVMOVDQA32 %s, Z10", rB)
 			w("\tVPXORD  %s, Z10, Z10", rC)
 			w("\tVPXORD  %s, Z10, Z10", rD)
 		case 3:
-			// F = c ^ (b | ~d). Init Z10=d, then VPTERNLOGD $0xD9 (d,b,c)
 			w("\tVMOVDQA32 %s, Z10", rD)
 			w("\tVPTERNLOGD $0xD9, %s, %s, Z10", rB, rC)
 		}
 
-		// Accumulate: Z10 += a + X[g] + T[i]
-		w("\tVPADDD %s, Z10, Z10", rA)
-		w("\tVPADDD Z9, Z10, Z10")                // +X[g] (Z9 was loaded above)
-		w("\tVPADDD T16_%d<>+0(SB), Z10, Z10", i) // merged T load
+		// ILP: a+X+T in Z11, parallel with F above.
+		w("\tVPADDD %s, Z9, Z11", rA)             // a + X  (chain B)
+		w("\tVPADDD T16_%d<>+0(SB), Z11, Z11", i) // a + X + T
 
-		// VPROLD: single-instruction dword rotate (AVX512F)
-		w("\tVPROLD $%d, Z10, Z10", s)
+		// Prefetch next X after Z9 consumed, before merge+rotate chain.
+		if i < 63 {
+			w("\tVMOVDQU32 %d(DI), Z9", gVals[i+1]*64)
+		}
+
+		w("\tVPADDD Z11, Z10, Z10")    // F + (a+X+T)  (merge)
+		w("\tVPROLD $%d, Z10, Z10", s) // rotate
 
 		// Write back: ra = rb + result
 		w("\tVPADDD %s, Z10, %s", rB, rA)

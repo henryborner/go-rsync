@@ -31,11 +31,7 @@ func TestAVX2Parity(t *testing.T) {
 			if !checksum1AVX2(tt.data, &avxS1, &avxS2) {
 				t.Fatal("AVX2 refused")
 			}
-			p := len(tt.data) - len(tt.data)%64
-			for i := p; i < len(tt.data); i++ {
-				avxS1 += uint32(tt.data[i])
-				avxS2 += avxS1
-			}
+			// asm now processes ALL bytes (64B blocks + scalar remainder).
 			if avxS1 != wantS1 || avxS2 != wantS2 {
 				t.Errorf("%s: len=%d s1 want=%d got=%d, s2 want=%d got=%d",
 					tt.name, len(tt.data), wantS1, avxS1, wantS2, avxS2)

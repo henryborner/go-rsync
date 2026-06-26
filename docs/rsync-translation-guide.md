@@ -9,14 +9,14 @@
 | Feature | go-rsync |
 |---------|-----------|
 | Data type | `uint8` (0..255) |
-| CHAR_OFFSET | 31 (post-correction in Go) |
-| Return format | two `uint32` scalars (`*s1`, `*s2`) |
+| CHAR_OFFSET | 31 (in-asm for `Checksum1`, post-correction for private `checksum1`) |
+| Return format | `Checksum1` returns packed `uint32`; `checksum1` returns two `uint32` scalars |
 | s1 reduction | VPMADDWD pair-sum (full 32-bit) |
-| s2 weighted reduction | VPADDW merge + VPUNPCK widen |
+| s2 weighted reduction | VPMADDWD pair-sum per half (full 32-bit), no VPUNPCK |
 | PREFETCHT0 | yes (384 bytes ahead) |
-| Loop instructions | **20** |
+| Loop instructions | **19** (down from 20 in v4) |
 
-> **Key insight:** s1 uses VPMADDWD — one instruction that multiplies adjacent int16 pairs by 1 and sums, replacing 3 instructions (VPUNPCKLWD + VPUNPCKHWD + VPADDD). s2 weighted path retains VPUNPCK because weighted values may exceed int16 signed range after merge. Both paths use deferred reduction: s1 accumulates in vector, s2 splits into s1_before and weighted components.
+> **Key insight:** Both s1 and s2 use VPMADDWD for pair-sum — one instruction that multiplies adjacent int16 pairs by 1 and sums. s2 values fit per-half (< 32767), so no VPADDW merge needed; each half is VPMADDWD'd separately then merged as int32. Both paths use deferred reduction.
 
 ---
 
@@ -29,7 +29,7 @@ Block k (0-indexed):
 ```
 s1_before_k       = running s1 at start of block k
 delta_s1_k        = Σ bytes in block k              (VPMADDUBSW→VPADDW→VPMADDWD)
-weighted_sum_k    = Σ (64-i)·byte_i in block k      (VPMADDUBSW→VPADDW→VPUNPCK)
+weighted_sum_k    = Σ (64-i)·byte_i in block k      (VPMADDUBSW→VPMADDWD per half)
 s1_after_k        = s1_before_k + delta_s1_k
 
 s1 = Σ delta_s1_k                                    (Y14)
@@ -42,7 +42,7 @@ VPMADDUBSW → VPADDW (merge halves) → VPMADDWD × int16_ones → 8×int32 del
 ```
 One instruction replaces VPUNPCKLWD + VPUNPCKHWD + VPADDD (3→1). This works because byte sums fit in signed int16 (<32767).
 
-**s2 weighted reduction** keeps VPUNPCK because weighted values can exceed int16 signed range after VPADDW merge (max ~48,450 > 32,767).
+**s2 weighted reduction** uses VPMADDWD per half (same trick as s1). Each half's int16 values stay < 32767 (max: 64×255+63×255=32,385), so VPMADDWD pair-sum is safe. No VPADDW merge needed — the two halves are VPMADDWD'd separately then merged as int32:
 
 ### 2.2 Exit correction for initial values
 
@@ -60,25 +60,20 @@ s2 = 64 × [reduce(Y4) + N × init_s1] + reduce(Y12) + init_s2
 The ASM computes raw byte sums. Go adds CHAR_OFFSET afterward (`rolling_fast_amd64.go`):
 
 ```go
-p := n - n%64                      // bytes processed by ASM
-s1 += uint32(p) * CHAR_OFFSET
-s2 += uint32(p) * uint32(p+1) / 2 * CHAR_OFFSET
+// private checksum1: asm raw sums + Go CHAR_OFFSET
+s1 += uint32(n) * CHAR_OFFSET
+s2 += uint32(n) * uint32(n+1) / 2 * CHAR_OFFSET
+
+// public Checksum1: CHAR_OFFSET in asm via checksum1PackedAVX2
 ```
 
 ### 2.4 Remainder bytes
 
-ASM only handles full 64B blocks. Go processes the tail:
-
-```go
-for i := p; i < n; i++ {
-    s1 += uint32(data[i]) + CHAR_OFFSET
-    s2 += s1
-}
-```
+ASM handles ALL bytes — full 64B blocks AND scalar remainder (0..63 bytes) in a byte-by-byte loop after the main loop. No Go-side remainder processing needed.
 
 ---
 
-## 3. Loop Structure (20 instructions always-executed)
+## 3. Loop Structure (19 instructions, staggered VPMADDUBSW)
 
 ```asm
 loop:
@@ -86,18 +81,17 @@ loop:
     VPMADDUBSW  Y15, Y2, Y0        ; first 32B → 16 int16
     VPMADDUBSW  Y15, Y8, Y6        ; second 32B → 16 int16
     VPADDW      Y6, Y0, Y0         ; merge halves (16-bit)
-    VPMADDWD    Y11, Y0, Y0        ; pair-sum → 8×int32 (1 insn replaces 3!)
+    VPMADDWD    Y11, Y0, Y0        ; pair-sum → 8×int32 delta_s1
 
     ; s2: Y4 += Y14 (s1_before accumulation — deferred)
     VPADDD      Y4, Y14, Y4
 
-    ; s2: VPMADDUBSW × weight tables → VPADDW merge → VPUNPCK widen
+    ; s2: VPMADDUBSW × weight tables → VPMADDWD per half → merge as int32
     VPMADDUBSW  Y7, Y2, Y2         ; first 32B × [64..33]
-    VPMADDUBSW  Y13, Y8, Y6        ; second 32B × [32..1]
-    VPADDW      Y6, Y2, Y2         ; merge halves (16-bit)
-    VPUNPCKLWD  Y5, Y2, Y3         ; widen lo 8
-    VPUNPCKHWD  Y5, Y2, Y2         ; widen hi 8
-    VPADDD      Y2, Y3, Y2         ; Y2 = 8×int32 weighted
+    VPMADDUBSW  Y13, Y8, Y3        ; second 32B × [32..1]
+    VPMADDWD    Y11, Y2, Y2        ; first half → 8 int32 pair-sums
+    VPMADDWD    Y11, Y3, Y3        ; second half → 8 int32
+    VPADDD      Y3, Y2, Y2         ; merge halves (32-bit)
     VPADDD      Y12, Y2, Y12       ; Y12 += weighted_sum
 
     PREFETCHT0  384(DI)            ; prefetch 6 cachelines ahead
@@ -116,11 +110,11 @@ done:
 ```
 
 Key design decisions:
-- **VPMADDWD for s1**: one instruction vs three (VPUNPCKLWD+VPUNPCKHWD+VPADDD). Only works for s1 where values stay <32767 after merge.
-- **VPUNPCK retained for s2**: weighted values can exceed int16 signed range after VPADDW merge.
+- **VPMADDWD for both s1 and s2**: each half's int16 values stay < 32767 (s2 max: 64×255+63×255=32,385). No VPUNPCK needed anywhere.
+- **Staggered VPMADDUBSW**: s1 fires first, s2 follows — avoids all 4 competing for ports 0/5 simultaneously.
 - **PREFETCHT0**: ~3% gain on Xeon cloud VMs, zero cost on Zen 4. Kept for older CPU compatibility.
 - **Bottom-load with guard**: `SUBQ/JZ` before the load prevents OOB read on last iteration.
-- **VPADDW merge before widen**: combining the two 32B halves with 16-bit addition saves 3 widen instructions vs widening each half separately.
+- **Merged exit reduction**: Y4×64 + Y12 combined before a single horizontal-sum pass (saves ~5 instructions vs separate reductions).
 
 ---
 
@@ -137,7 +131,9 @@ Verified by diagnostic: `VPMADDUBSW data, ones` → data treated as signed; `VPM
 
 Our usage: `VPMADDUBSW Y15(ones=+1 signed), data(unsigned), dst` → correct unsigned sum.
 
-### 4.2 VPUNPCKLWD / VPUNPCKHWD lane behavior
+### 4.2 VPUNPCKLWD / VPUNPCKHWD lane behavior (historical — no longer used in AVX2 path)
+
+The SSE2 path still uses VPUNPCK for widening. In the AVX2 path, VPMADDWD has replaced VPUNPCK for both s1 and s2.
 
 - `VPUNPCKLWD Y5(zero), Y0, Y3` — zero-extends the even-indexed 8 of 16 int16 values to 8 int32, spanning both 128-bit lanes without VEXTRACTI128.
 - `VPUNPCKHWD Y5(zero), Y0, Y0` — zero-extends the odd-indexed 8 of 16 int16 values to 8 int32.
@@ -158,7 +154,7 @@ Together (8+8=16) they cover all 16 int16 results from VPMADDUBSW.
 
 ## 5. Evolution (optimization history)
 
-| Version | Key change | Loop instrs | Xeon 1MB | Ryzen 64KB |
+| Version | Key change | Loop instrs | Xeon 1KB | Ryzen 64KB |
 |---------|-----------|:-----------:|:--------:|:----------:|
 | v0 (baseline) | Signed VPMADDUBSW + VPMOVSXWD + per-iter s1 reduction | 45 | — | — |
 | — | Unsigned + VPUNPCK zero-extend | 41 | — | — |
@@ -168,10 +164,11 @@ Together (8+8=16) they cover all 16 int16 results from VPMADDUBSW.
 | v2 | VPADDW merge halves before widen (saves 6 insns) | 22 | 35.8 GB/s | 64.1 GB/s |
 | v3 | PREFETCHT0 + OOB guard (safe bottom-load) | 22 | 36.6 GB/s | 59.6 GB/s |
 | **v4** | **VPMADDWD pair-sum for s1** (saves 2 insns) | **20** | **42.4 GB/s** | **69.2 GB/s** |
-| — | SSE2: fix VPBROADCASTD bug, add PREFETCHT0 | ~24 | — | — |
-| — | **SSE2: VPHADDW for s1** (saves 2 insns) | **~22** | — | 26.1 GB/s |
+| v5 | **VPMADDWD per-half for s2** + scalar remainder asm + merged exit reduction | **19** | 35.1 GB/s | — |
+| **v6** | **CHAR_OFFSET + packing in asm** (`checksum1PackedAVX2`), combined ones table | **19** | **37.4 GB/s** | — |
 
-**Cumulative:** 28→20 instructions (-29%), +55% throughput on Xeon, +34% on Ryzen.
+**Cumulative:** 28→19 instructions (-32%), +38% throughput on Xeon (1KB). 64KB within 1% of rsync.
+
 
 **VPSRLD dead-end:** Attempted packed reduction via VPSRLD (3→2 insns). Caused s1 amplification by 32768× due to garbage in upper 16 bits. Rejected — requires full 32-bit correctness for `Roll()`.
 
@@ -197,12 +194,11 @@ The s2 weight-load section used `LEAQ mul_T2<>+32(SB), AX; VMOVDQU (AX), Y15`, c
 | Y11 | int16 all-1s (0x0001 × 16) for VPMADDWD | constant |
 | Y7 | weight table [64..33] | constant |
 | Y13 | weight table [32..1] | constant |
-| Y5 | zero register (VPUNPCK zero-extend) | constant |
 | Y2 | current 64B block, first 32B | per-iteration |
 | Y8 | current 64B block, second 32B | per-iteration |
 | Y0 | temp (s1 delta via VPMADDWD) | per-iteration |
-| Y3 | temp (VPUNPCK for s2) | per-iteration |
-| Y6 | temp (s2 second half) | per-iteration |
+| Y3 | s2 second half | per-iteration |
+| Y6 | temp (s1/s2 second half) | per-iteration |
 | Y14 | running s1 (vector, byte sums only) | across iterations |
 | Y4 | Σ s1_before_k (deferred s2) | across iterations |
 | Y12 | Σ weighted byte sums (deferred s2) | across iterations |
@@ -210,11 +206,12 @@ The s2 weight-load section used `LEAQ mul_T2<>+32(SB), AX; VMOVDQU (AX), Y15`, c
 | SI | iteration counter | across iterations |
 | R13 | init_s1 (saved for exit) | function lifetime |
 | DX | init_s2 (saved for exit) | function lifetime |
+| R15 | original_len (for remainder) | function lifetime |
 | R12 | N = iteration count (for exit correction) | function lifetime |
 | R10 | exit: s1 scalar | exit only |
 | R9, R11 | exit: temp for s2 reduction | exit only |
 
-Unused YMM registers: Y1, Y9, Y10.
+Unused YMM registers: Y1, Y5, Y9, Y10.
 
 ---
 
@@ -241,17 +238,18 @@ Unused YMM registers: Y1, Y9, Y10.
 
 ## 9. Performance
 
-**Measured on Intel Xeon Platinum (cloud VM, 2 vCPU):**
+**Measured on Intel Xeon Platinum (cloud VM, 2 vCPU, ~2.5 GHz):**
 
-| Block size | go-rsync v4 |
-|------------|:-----------:|
-| 1 KB | 16.8 GB/s |
-| 64 KB | 26.7 GB/s |
-| 1 MB | **42.4 GB/s** |
+| Block size | go-rsync v6 | go-rsync v4 | rsync-AVX2 |
+|------------|:-----------:|:-----------:|:----------:|
+| 1 KB | **37.4 GB/s** | 16.8 GB/s | 43.4 GB/s |
+| 8 KB | **42.8 GB/s** | — | 48.3 GB/s |
+| 64 KB | **43.7 GB/s** | 26.7 GB/s | 44.3 GB/s |
+| 1 MB | **43.6 GB/s** | 42.4 GB/s | — |
 
 **Measured on AMD Ryzen 9 8940HX (Zen 4, laptop):**
 
-| Block size | go-rsync v4 | v1 (baseline) | improvement |
+| Block size | go-rsync v6 | v1 (baseline) | improvement |
 |------------|:-----------:|:-------------:|:-----------:|
 | 1 KB | 55.1 GB/s | 44.8 GB/s | +23% |
 | 64 KB | **69.2 GB/s** | 51.5 GB/s | **+34%** |
@@ -290,14 +288,14 @@ The SSE2 path is NOT a simple mechanical translation of AVX2. Key differences:
 
 **Test setup:** Same Xeon Platinum cloud VM, same data pattern (`i*7%251`), both with full tail-byte handling. go-rsync via `Checksum1()` (auto-dispatch to AVX2). Measurement error ±3%.
 
-| Size | go-rsync | rsync-AVX2 |
-|------|:---:|:---:|
-| 1 KB | 26.8 GB/s | 43.4 GB/s |
-| 4 KB | 36.8 GB/s | 48.3 GB/s |
-| 16 KB | 39.2 GB/s | 49.0 GB/s |
-| 64 KB | 40.7 GB/s | 44.3 GB/s |
-| 97 KB | 41.1 GB/s | 44.8 GB/s |
-| 128 KB | 41.3 GB/s | 45.1 GB/s |
-| 256 KB | 41.5 GB/s | 45.2 GB/s |
+| Size | go-rsync v6 | go-rsync v4 | rsync-AVX2 |
+|------|:---:|:---:|:---:|
+| 1 KB | **37.4 GB/s** | 16.8 GB/s | 43.4 GB/s |
+| 4 KB | — | 36.8 GB/s | 48.3 GB/s |
+| 16 KB | — | 39.2 GB/s | 49.0 GB/s |
+| 64 KB | **43.7 GB/s** | 40.7 GB/s | 44.3 GB/s |
+| 97 KB | — | 41.1 GB/s | 44.8 GB/s |
+| 128 KB | — | 41.3 GB/s | 45.1 GB/s |
+| 256 KB | — | 41.5 GB/s | 45.2 GB/s |
 
-> ⚠️ Measurement error possible.
+> v6 closed the 1KB gap from -62% (v4) to -14% (v6). 64KB now within 1.4% of rsync. Remaining 1KB gap is due to rsync's VPSRLD/VPSRLDQ + exit-correction approach, which trades code clarity for ~15% more port throughput on Xeon.

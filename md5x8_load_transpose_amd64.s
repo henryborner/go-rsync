@@ -13,8 +13,8 @@
 
 #include "textflag.h"
 
-// func md5x8LoadTranspose(data []byte, offsets *[8]int, chunk int, x *[16][8]uint32)
-TEXT ·md5x8LoadTranspose(SB), NOSPLIT, $0-48
+// func md5x8LoadTransposeScalar(data []byte, offsets *[8]int, chunk int, x *[16][8]uint32)
+TEXT ·md5x8LoadTransposeScalar(SB), NOSPLIT, $0-48
 	MOVQ data+0(FP), R8       // data base pointer
 	MOVQ offsets+24(FP), R9    // &offsets[0]
 	MOVQ chunk+32(FP), R10     // chunk index

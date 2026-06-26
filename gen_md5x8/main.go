@@ -132,21 +132,23 @@ func main() {
 			w("\tVPXOR  %s, Y9, Y12", rC)
 		}
 
-		// Accumulate: Y12 = rotl(a + F + X[g] + T[i], s)
-		w("\tVPADDD %s, Y12, Y12", rA)          // + a
-		w("\tVPADDD Y13, Y12, Y12")             // + X[g] (preloaded)
-		w("\tVPADDD T_%d<>+0(SB), Y12, Y12", i) // + T[i]
+		// ILP: compute a+X+T in parallel with F, then combine.
+		w("\tVPADDD %s, Y13, Y14", rA)          // a + X  (chain A)
+		w("\tVPADDD T_%d<>+0(SB), Y14, Y14", i) // a + X + T
+
+		// Prefetch next X right after Y13 is consumed (before rotation chain).
+		// Gives ~4 instructions of slack to hide load latency.
+		if i < 63 {
+			w("\tVMOVDQU %d(DI), Y13", gVals[i+1]*32)
+		}
+
+		w("\tVPADDD Y14, Y12, Y12") // F + (a+X+T)  (merge chains)
 		w("\tVPSLLD $%d, Y12, Y11", s)
 		w("\tVPSRLD $%d, Y12, Y12", 32-s)
 		w("\tVPOR   Y12, Y11, Y12")
 
 		// Write back: ra = rb + rotl_result
 		w("\tVPADDD %s, Y12, %s", rB, rA)
-
-		// Preload NEXT step's X (hides load latency behind current step's writeback)
-		if i < 63 {
-			w("\tVMOVDQU %d(DI), Y13", gVals[i+1]*32)
-		}
 		w("")
 	}
 

@@ -561,3 +561,42 @@ func BenchmarkMD5x16Core_Bulk(b *testing.B) {
 		}
 	}
 }
+
+// BenchmarkLoadTranspose_Gather vs _Scalar compares the two loading strategies.
+func BenchmarkLoadTranspose_Gather(b *testing.B) {
+	if !md5x8available() {
+		b.Skip("AVX2 not available")
+	}
+	data := make([]byte, 8*700)
+	var offsets [8]int
+	for i := 0; i < 8; i++ {
+		offsets[i] = i * 700
+	}
+	var x [16][8]uint32
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		for chunk := 0; chunk < 1000; chunk++ {
+			md5x8LoadTransposeGather(data, &offsets, chunk, &x)
+		}
+	}
+}
+
+func BenchmarkLoadTranspose_Scalar(b *testing.B) {
+	if !md5x8available() {
+		b.Skip("AVX2 not available")
+	}
+	data := make([]byte, 8*700)
+	var offsets [8]int
+	for i := 0; i < 8; i++ {
+		offsets[i] = i * 700
+	}
+	var x [16][8]uint32
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		for chunk := 0; chunk < 1000; chunk++ {
+			md5x8LoadTransposeScalar(data, &offsets, chunk, &x)
+		}
+	}
+}
