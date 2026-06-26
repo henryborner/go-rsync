@@ -296,8 +296,7 @@ func GenerateSignatureReader(r io.Reader, fileSize int64, blockSize int32, stron
 	// AVX512 16-way md5 fast path (blockSize >= 2KB only).
 	// AVX512 gather overhead dominates for small blocks; threshold empirically
 	// determined on Intel Xeon Platinum @ 2.5GHz (crossover at ~1400 bytes).
-	// FIXME: likely same MD5 correctness bug as AVX2 path — disabled pending verification.
-	if false && strongAlgo == "md5" && md5x16available() && blockSize >= 2048 {
+	if strongAlgo == "md5" && md5x16available() && blockSize >= 2048 {
 		const batchSize = 16
 		batchBuf := make([]byte, batchSize*int(blockSize))
 

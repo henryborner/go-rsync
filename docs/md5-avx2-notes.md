@@ -16,7 +16,7 @@ GenerateSignature(data, blockSize) → GenerateSignatureReader(io.Reader, ...)
     ├─ Phase 2: tail + padding (md5Finalize8way / scalar)
     └─ [!amd64] crypto/md5 stub
 
-Path selection:  AVX2 → scalar  (AVX512 temporarily disabled — same VPANDN/VPGATHERDD bugs, pending fix)
+Path selection:  AVX512 (blockSize ≥ 2KB) → AVX2 → scalar
 ```
 
 ## Key files
