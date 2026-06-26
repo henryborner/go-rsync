@@ -16,7 +16,7 @@ Used in production by [Shuttle](https://github.com/henryborner/shuttle), a Windo
 - **📡 Binary wire protocol** — compact big-endian encoding, ready for SSH pipes.
 - **💧 Streaming I/O** — generate signatures from `io.Reader`, decode instructions one-at-a-time, minimal memory.
 - **🔗 rsync-compatible checksum** — same CHAR_OFFSET=31, same uint32 natural-overflow arithmetic.
-- **🧪 Well tested** — roundtrip, identical-file, parity tests (AVX2 vs SSE2 vs pure Go), MD5 8-way validation.
+- **🧪 Well tested** — roundtrip, identical-file, parity tests (AVX2 vs SSE2 vs pure Go), MD5 8-way + 16-way validation (AVX2 + AVX-512 vs stdlib).
 
 ## 📦 Install
 
@@ -115,7 +115,8 @@ go test -bench='BenchmarkSignature$|BenchmarkMD5x8_Bulk|BenchmarkChecksum1' -ben
 | `md5x8_gather_amd64.s` | **Raw machine code** — VPGATHERDD load+transpose (bypasses Go asm VSIB bug) |
 | `md5x16_amd64.s` | **Generated** — AVX-512 MD5 core (16-way, ≥2KB blocks) |
 | `md5x16_amd64.go` | Go-side glue for AVX-512 path |
-| `md5x16_gather_amd64.s` | ZMM VPGATHERDD load+transpose |
+| `md5x16_gather_amd64.s` | ZMM VPGATHERDD load+transpose (k-mask reloaded per gather) |
+| `md5x8_test.go` | Tests: 8-way + 16-way MD5 parity, gather verification |
 | `gen_md5x8/main.go` | Code generator for `md5x8_amd64.s` |
 | `gen_md5x16/main.go` | Code generator for `md5x16_amd64.s` |
 | `docs/md5-avx2-notes.md` | Maintenance guide + **debugging journal** for AVX2/AVX-512 MD5 |

@@ -99,9 +99,10 @@ cd gen_md5x16 && go run .   # → ../md5x16_amd64.s
 ## Safety checklist
 
 - [ ] `go vet .` — zero warnings
-- [ ] `go test -count=1 .` — all tests pass
+- [ ] `go test -count=1 .` — all tests pass (including AVX-512 parity if CPU supports)
 - [ ] `VZEROUPPER` before every `RET` in YMM/ZMM functions
 - [ ] VPGATHERDD mask reloaded before **every** gather (instruction zeros mask)
+- [ ] VPTERNLOGD immediates use Go-swapped operand order (not Intel manual values)
 - [ ] `//go:noescape` on all asm decls with pointer args
 - [ ] Slice args occupy 24 bytes in frame (ptr+len+cap), not 16
 - [ ] Non-amd64 build: `GOOS=darwin GOARCH=arm64 go build .` succeeds
@@ -111,6 +112,11 @@ cd gen_md5x16 && go run .   # → ../md5x16_amd64.s
 - **VPANDN operand order.**  Go Plan 9 `VPANDN A,B,C` = `C = A &^ B`
   (not Intel's `C = ~A & B`).  The generator (`gen_md5x8/main.go`) was
   fixed to swap operands for Round 1/2/4.
+- **VPTERNLOGD operand order.**  Go Plan 9 `VPTERNLOGD imm,src1,src2,dst`
+  computes truth table index `n = (dst<<2)|(src2<<1)|src1`, NOT Intel's
+  `n = (dst<<2)|(src1<<1)|src2`.  Same operand-swap as VPANDN.  The
+  AVX-512 generator (`gen_md5x16/main.go`) uses Go-swapped immediates
+  ($0xD8/$0xAC/$0x63 for R1/R2/R4).  Do NOT use Intel-manual values.
 - **VPGATHERDD syntax.**  Go asm order is `(base)(idx*scale), mask, dst` —
   not Intel's `mask, mem, dst`.  AVX512 needs `K1` (k-mask), not `YMM`.
 - **VPGATHERDD mask init.**  Must explicitly set to all-ones
@@ -192,14 +198,55 @@ preprocessor).
 **Fix**: expanded WORD16 macros manually to DATA/GLOBL declarations;
 added `KXNORW K1,K1,K1` before each VPGATHERDD.
 
+### 7. AVX-512: VPTERNLOGD operand swap (2026-06-26) ❗ CRITICAL
+
+Go Plan 9's `VPTERNLOGD` swaps src1/src2, same as `VPANDN`:
+
+```
+Intel:  n = (dst<<2)|(src1<<1)|src2     (dst=zmm1, src1=zmm2, src2=zmm3)
+Go asm: n = (dst<<2)|(src2<<1)|src1     ← SWAPPED!
+```
+
+This went undetected because:
+- AVX2 tests passed (AVX2 uses VPANDN, not VPTERNLOGD)
+- No AVX-512 parity test existed (local Ryzen 9 has AVX-512 but tests
+  used blockSize=700 < AVX512 threshold of 2048)
+- The old immediates ($0xE2 R2, $0xD9 R4) happened to pass the
+  `TestMD5x16_UnevenLengths` test only because minFullChunks=0 → scalar
+  fallback, never exercising VPTERNLOGD
+
+Correct Go Plan 9 VPTERNLOGD immediates:
+
+| Round | Intel manual | Go Plan 9 (correct) | Old (broken) |
+|-------|-------------|---------------------|--------------|
+| R1    | $0xB8       | **$0xD8**           | $0xB8        |
+| R2    | $0xCA       | **$0xAC**           | $0xE2        |
+| R4    | $0x65       | **$0x63**           | $0xD9        |
+
+R3 uses VPXOR (no operand ordering issue, correct).
+
+**Impact**: 1GB identical file sync took 2+ minutes because server (Xeon
+with AVX-512) generated wrong MD5 signatures; client (stdlib MD5) found
+zero matches → byte-by-byte scan of 1 billion positions.
+
+**Fix**: regenerated `md5x16_amd64.s` via `gen_md5x16/main.go` (updated).
+Added 3 AVX-512 parity tests (`TestMD5x16_AVX512_Parity`,
+`TestMD5x16_CoreOnly`, `TestMD5x16_GatherVerification`) to prevent
+regression.
+
 ### Key takeaways
 
 1. **Test assembly against the standard library.**  `md5.Sum()` is the
-   ground truth.  `TestMD5x8_AVX2_Parity` now guards against regressions.
-2. **VPGATHERDD zeros the mask.**  Always reload before each gather.
-3. **Go Plan 9 operand order ≠ Intel.**  Always verify with a minimal
-   test before writing large assembly functions.
-4. **`BYTE` raw machine code is a viable escape hatch** when the assembler
+   ground truth.  `TestMD5x8_AVX2_Parity` and `TestMD5x16_AVX512_Parity`
+   now guard against regressions.
+2. **Test every code path.**  AVX-512 parity went untested for weeks
+   because blockSize=700 (test default) fell below the AVX512 threshold
+   (2048).  The `TestMD5x16_*` tests now use explicit large block sizes.
+3. **VPGATHERDD zeros the mask.**  Always reload before each gather.
+4. **Go Plan 9 operand order ≠ Intel.**  Always verify with a minimal
+   test before writing large assembly functions.  This has bitten us on
+   `VPMADDUBSW`, `VPANDN`, and now `VPTERNLOGD`.
+5. **`BYTE` raw machine code is a viable escape hatch** when the assembler
    has encoding bugs.  The machine code format is stable; the assembler isn't.
-5. **Pure-Go reference implementations are invaluable** for debugging.
+6. **Pure-Go reference implementations are invaluable** for debugging.
    `md5x8_purego.go` was essential for isolating each bug.
