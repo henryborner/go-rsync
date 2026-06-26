@@ -119,7 +119,13 @@ go test -bench='BenchmarkSignature$|BenchmarkMD5x8_Bulk|BenchmarkChecksum1' -ben
 | `md5x8_test.go` | Tests: 8-way + 16-way MD5 parity, gather verification |
 | `gen_md5x8/main.go` | Code generator for `md5x8_amd64.s` |
 | `gen_md5x16/main.go` | Code generator for `md5x16_amd64.s` |
-| `docs/md5-avx2-notes.md` | Maintenance guide + **debugging journal** for AVX2/AVX-512 MD5 |
+| `docs/checksum-engine.md` | Checksum engine: algorithm, loop structure, quirks, bug history, SSE2 appendix |
+| `docs/md5-simd.md` | MD5 SIMD reference: architecture, techniques, safety checklist, debugging journal |
+
+## 📚 Documentation
+
+- **[Checksum Engine](docs/checksum-engine.md)** — Rolling checksum algorithm, AVX2/SSE2 loop structure, Go Plan 9 quirks, optimization history (v0→v6), all bugs fixed, register map, test coverage, performance data.
+- **[MD5 SIMD](docs/md5-simd.md)** — AVX2/AVX-512 parallel MD5 architecture, gather/transpose techniques, safety checklist, full debugging journal (2026-06-26), lessons learned.
 
 ## 🔗 Related
 
