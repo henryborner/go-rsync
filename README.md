@@ -1,7 +1,7 @@
 # go-rsync
 
 [![Go Reference](https://pkg.go.dev/badge/github.com/henryborner/go-rsync.svg)](https://pkg.go.dev/github.com/henryborner/go-rsync)
-[![Go](https://img.shields.io/badge/Go-1.25+-blue)](https://go.dev)
+[![Go](https://img.shields.io/badge/Go-1.21+-blue)](https://go.dev)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
 **Go implementation of the rsync delta-transfer algorithm** — the first Go rsync library with AVX2/AVX-512 accelerated MD5 (8-way + 16-way SIMD). Rolling checksum matching, block signature generation, file reconstruction, and a binary wire protocol. Batteries included.
@@ -10,7 +10,7 @@ Used in production by [Shuttle](https://github.com/henryborner/shuttle), a Windo
 
 ## ✨ Features
 
-- **🧬 8-way AVX2 MD5** — 8 blocks hashed in parallel via hand-written AVX2 assembly (YMM registers), VPGATHERDD gather load (raw machine code, bypasses Go assembler VSIB bug). First Go rsync library to do this.
+- **🧬 8-way AVX2 MD5** — 8 blocks hashed in parallel via hand-written AVX2 assembly (YMM registers), VPGATHERDD gather load + transpose. First Go rsync library to do this.
 - **⚡ 3-tier checksum engine** — AVX2 (64B/iter) → SSE2/SSSE3 (32B/iter) → pure Go 128B batch. Auto-detects CPU at runtime.
 - **🔌 Pluggable strong hash** — md5, sha256, xxh64 built-in. Register your own with `FastSum` support.
 - **📡 Binary wire protocol** — compact big-endian encoding, ready for SSH pipes.
@@ -112,20 +112,20 @@ go test -bench='BenchmarkSignature$|BenchmarkMD5x8_Bulk|BenchmarkChecksum1' -ben
 | `md5x8_common.go` | Shared MD5 constants + `md5FinalLane` |
 | `md5x8_generic.go` | Stubs for non-amd64 (darwin/arm64) |
 | `md5x8_purego.go` | Correct pure-Go 8-way MD5 reference (fallback / validation) |
-| `md5x8_gather_amd64.s` | **Raw machine code** — VPGATHERDD load+transpose (bypasses Go asm VSIB bug) |
+| `md5x8_gather_amd64.s` | VPGATHERDD gather load + transpose (8-way AVX2) |
 | `md5x16_amd64.s` | **Generated** — AVX-512 MD5 core (16-way, ≥2KB blocks) |
 | `md5x16_amd64.go` | Go-side glue for AVX-512 path |
 | `md5x16_gather_amd64.s` | ZMM VPGATHERDD load+transpose (k-mask reloaded per gather) |
 | `md5x8_test.go` | Tests: 8-way + 16-way MD5 parity, gather verification |
 | `gen_md5x8/main.go` | Code generator for `md5x8_amd64.s` |
 | `gen_md5x16/main.go` | Code generator for `md5x16_amd64.s` |
-| `docs/checksum-engine.md` | Checksum engine: algorithm, loop structure, quirks, bug history, SSE2 appendix |
-| `docs/md5-simd.md` | MD5 SIMD reference: architecture, techniques, safety checklist, debugging journal |
+| `docs/checksum-engine.md` | Checksum engine: algorithm, loop structure, conventions, optimization history, SSE2 appendix |
+| `docs/md5-simd.md` | MD5 SIMD reference: architecture, techniques, safety checklist |
 
 ## 📚 Documentation
 
-- **[Checksum Engine](docs/checksum-engine.md)** — Rolling checksum algorithm, AVX2/SSE2 loop structure, Go Plan 9 quirks, optimization history (v0→v6), all bugs fixed, register map, test coverage, performance data.
-- **[MD5 SIMD](docs/md5-simd.md)** — AVX2/AVX-512 parallel MD5 architecture, gather/transpose techniques, safety checklist, full debugging journal (2026-06-26), lessons learned.
+- **[Checksum Engine](docs/checksum-engine.md)** — Rolling checksum algorithm, AVX2/SSE2 loop structure, Go Plan 9 conventions, optimization history (v0→v6), register map, test coverage, performance data.
+- **[MD5 SIMD](docs/md5-simd.md)** — AVX2/AVX-512 parallel MD5 architecture, gather/transpose techniques, assembly notes, safety checklist.
 
 ## 🔗 Related
 

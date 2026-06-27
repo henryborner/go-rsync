@@ -141,7 +141,7 @@ Asm handles all bytes — full 64B blocks plus scalar remainder (0..63 bytes) in
 | — | Unsigned + VPUNPCK zero-extend | 41 | — | — |
 | — | Preload low-weight table Y13 | 36 | — | — |
 | — | Deferred s1 reduction | 27 | — | — |
-| v1 | Bottom-load + VPBROADCASTD fix | 28 | 27.2 GB/s | 51.5 GB/s |
+| v1 | Bottom-load + avoid init_s1 broadcast | 28 | 27.2 GB/s | 51.5 GB/s |
 | v2 | VPADDW merge-first-then-extend (−6 instrs) | 22 | 35.8 GB/s | 64.1 GB/s |
 | v3 | PREFETCHT0 + OOB guard | 22 | 36.6 GB/s | 59.6 GB/s |
 | v4 | VPMADDWD pair-sum for s1 (−2 instrs) | 20 | — | 69.2 GB/s |
@@ -178,23 +178,20 @@ Go Plan 9 swaps src1/src2 for non-commutative SIMD instructions:
 
 `X0` is the low 128 bits of `Y0`. Writing `Y0` updates `X0`. Exit reduction exploits this — no `VEXTRACTI128 $0, Y0, X0` needed.
 
-### 6.4 Go Assembler Limitations
+### 6.4 Implementation Notes
 
-- VPMADDUBSW: no memory operands (src2 must be register).
-- `VPBROADCASTD`: broadcasting `init_s1` into all vector lanes causes lane-count amplification. Use scalar init values at exit instead.
-- Weight tables: `DATA /8` with little-endian uint64 encoding.
+- VPMADDUBSW does not accept memory operands on x86 (src2 must be register). This is an ISA-level encoding restriction, not specific to Go.
+- `VPBROADCASTD`: broadcasting `init_s1` into all vector lanes would cause lane-count amplification on reduction. Use scalar init values at exit instead.
+- Weight tables: use `DATA /4` for int32 lanes, `DATA /8` for int64 lanes. Mismatched element size between DATA and the consuming instruction causes lane misalignment (every-other-lane garbage). See §6.5.
 
-### 6.5 Assembly Gotchas — Verified on Go 1.25
+### 6.5 Assembly Notes
 
-Common pitfalls when writing SIMD assembly for Go. These are all confirmed
-on Go 1.25 across Intel Xeon and AMD Zen 4.
+Common pitfalls when writing SIMD assembly for Go, confirmed on
+amd64 (Intel Xeon and AMD Zen 4).
 
-**XMM vs YMM register availability.** Older Go assemblers (pre-1.25) only
-exposed `VPADDW` and `VPMADDWD` for YMM registers; the XMM forms produced
-"invalid instruction" errors. This forced the SSE2 checksum path to use
-`VPHADDW` + `VPUNPCK` + `VPADDD` (4–6 instructions) instead of
-`VPADDW` + `VPMADDWD` (2 instructions).  **Fixed in Go 1.25** — all XMM
-packed-word instructions are now available.
+**XMM vs YMM registers.**  Both XMM (128-bit) and YMM (256-bit) forms
+of AVX packed-word instructions (`VPADDW`, `VPMADDWD`) are available.
+The SSE2 checksum path uses XMM forms; the AVX2 path uses YMM forms.
 
 **VPGATHERDD (VEX) syntax.** Go Plan 9 assembler uses a non-Intel operand
 order: `VPGATHERDD mask, (base)(index*scale), dst`.  For AVX2 the mask
@@ -204,8 +201,7 @@ is a YMM register:
 VPGATHERDD Y2, (R8)(Y7*2), Y1    // mask first, VSIB middle, dst last
 ```
 
-This was previously worked around with raw `BYTE` opcodes; no longer
-necessary.  (The 16-way AVX-512 form `VPGATHERDD (base)(zmm*1), K1, dst`
+(The 16-way AVX-512 form `VPGATHERDD (base)(zmm*1), K1, dst`
 puts the k-mask between the memory operand and the destination.)
 
 **VPGATHERDQ (AVX-512).** Native Go asm syntax:
@@ -215,29 +211,25 @@ For 4-byte-aligned data (all standard rsync block sizes), use scale=4.
 For 8-byte-aligned data use scale=8.  The EVEX.W=1 bit distinguishes it
 from VPGATHERDD; the Go assembler handles this automatically.
 
-**DATA element-size mismatch.**  `DATA foo<>+0(SB)/8, $1` stores one
-int64; loaded with `VMOVDQU64` it gives 8 lanes of `[1,1,1,1,1,1,1,1]`.
-But when used with 32-bit instructions (`VPADDD`), the register is
-interpreted as 16 lanes of int32, yielding `[1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0]` —
-only every OTHER lane gets the constant.  **Always match DATA element
-size to the instruction:** `/4` for int32, `/8` for int64.
+**DATA element-size mismatch.**  Go's `DATA` directive uses `/4` for
+32-bit elements and `/8` for 64-bit elements.  If a table is expanded
+with `/8` (e.g. `DATA /8, $1` repeated 8×) but loaded with 32-bit
+instructions like `VPADDD`, each 64-bit word spans two int32 lanes:
+bytes `[01 00 00 00 00 00 00 00]` become `[1, 0, 1, 0, ...]`.
+**Always match DATA element size to the consuming instruction's lane
+width:** `/4` for int32, `/8` for int64.
 
 **VMOVDQA vs VMOVDQU.**  `VMOVDQA64` requires 64-byte alignment of the
 memory operand; Go DATA symbols are not guaranteed to be aligned.
 Always use `VMOVDQU` variants for load/store unless the symbol is
 explicitly aligned.
 
-**MOVL vs MOVQ on the stack.**  When building gather-index tables on the
-stack, write 32-bit indices with `MOVL` at 4-byte intervals, then load
-with `VMOVDQU32`.  Using `MOVQ` (64-bit stores at 8-byte intervals)
-causes `VMOVDQU32` (32-bit reads at 4-byte intervals) to see garbage in
-odd-numbered lanes.
-
-**Stack zeroing.**  NOSPLIT stack frames are NOT guaranteed to be
-zero-initialized.  Always `MOVQ $0, …` the entire frame before writing
-partial data, especially when loading into SIMD registers where upper
-lanes would otherwise contain garbage indices that cause out-of-bounds
-gather faults.
+**Stack index tables.**  When building gather-index tables on the stack,
+write indices at their natural width: `MOVL` for int32 indices at
+4-byte intervals (as in `md5x16_gather_amd64.s`).  Load with the
+matching `VMOVDQU32`.  Using mismatched widths (e.g. `MOVQ` stores at
+8-byte intervals loaded with `VMOVDQU32`) leaves garbage in alternative
+lanes.
 
 **VZEROUPPER.**  Mandatory before every `RET` in any function that
 touches YMM or ZMM registers.  Missing it causes severe performance
@@ -323,8 +315,8 @@ End-to-end delta round-trip, identical files, example usage.
 
 ## A. SSE2 Path
 
-SSE2 path (32B/iter via XMM registers). Go 1.25+ enables the same
-VPADDW+VPMADDWD pattern as AVX2; previous versions required VPHADDW+VPUNPCK workarounds.
+SSE2 path (32B/iter via XMM registers). Uses the same
+VPADDW+VPMADDWD pattern as AVX2.
 
 | Aspect | AVX2 | SSE2 |
 |--------|------|------|

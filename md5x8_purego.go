@@ -1,7 +1,6 @@
 // md5x8_purego.go — 8-way parallel MD5 in pure Go.
-// Correct reference implementation; used as fallback when AVX2 assembly is buggy.
-// md5x8_purego.go — 纯 Go 8路并行 MD5。
-// 正确的参考实现；AVX2 汇编有 bug 时回退使用。
+// Reference implementation for testing and validation.
+// md5x8_purego.go — 纯 Go 8路并行 MD5 参考实现，用于测试和验证。
 
 package delta
 
@@ -139,8 +138,8 @@ func md5x8Init() md5x8 {
 }
 
 // md5Hash8wayGo hashes 8 blocks in parallel using pure Go.
-// Correct reference implementation — use when AVX2 assembly is unavailable or buggy.
-// md5Hash8wayGo 纯 Go 8路并行 MD5，正确参考实现。
+// Reference implementation for validation against the AVX2 assembly path.
+// md5Hash8wayGo 纯 Go 8路并行 MD5，用于验证 AVX2 汇编路径的正确性。
 func md5Hash8wayGo(data []byte, offsets [8]int, lengths [8]int, out *[8][16]byte) {
 	m := md5x8Init()
 

@@ -28,10 +28,10 @@ TEXT ·checksum1SSE2(SB), NOSPLIT, $0-41
 	MOVL    (CX), R13               // R13 = init_s1
 	MOVL    (R8), DX                // DX  = init_s2
 
-	// ── Zero accumulators (X14 starts at 0, no broadcast bug) ──
+	// ── Zero accumulators ──
 	PXOR    X12, X12                // Σ weighted byte sums
 	PXOR    X4, X4                  // Σ s1_before_k
-	PXOR    X14, X14                // running byte-sum (no init_s1 broadcast!)
+	PXOR    X14, X14                // running byte-sum (init_s1 added as scalar at exit, not broadcast)
 
 	// Preload first 32B
 	MOVOU   0(DI), X2               // first 16B
