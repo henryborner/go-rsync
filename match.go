@@ -438,7 +438,77 @@ func GenerateSignatureReader(r io.Reader, fileSize int64, blockSize int32, stron
 		return sig
 	}
 
-	// Scalar path: non-md5 algorithms or platforms without AVX2.
+	// AVX2 8-way sha256 fast path
+	if strongAlgo == "sha256" && sha256x8available() {
+		const batchSize = 8
+		batchBuf := make([]byte, batchSize*int(blockSize))
+
+		for base := int64(0); base < numBlocks; base += batchSize {
+			n := batchSize
+			if base+int64(n) > numBlocks {
+				n = int(numBlocks - base)
+			}
+
+			total := 0
+			for b := 0; b < n; b++ {
+				remain := fileSize - (base+int64(b))*int64(blockSize)
+				if remain > int64(blockSize) {
+					remain = int64(blockSize)
+				}
+				if _, err := io.ReadFull(r, batchBuf[total:total+int(remain)]); err != nil {
+					return sig
+				}
+				total += int(remain)
+			}
+
+			if n == batchSize {
+				var off8, len8 [8]int
+				off := 0
+				for b := 0; b < 8; b++ {
+					off8[b] = off
+					len8[b] = int(blockSize)
+					off += int(blockSize)
+				}
+				var out8 [8][32]byte
+				sha256Hash8wayAVX2(batchBuf, off8, len8, &out8)
+				for b := 0; b < 8; b++ {
+					idx := int(base) + b
+					start := idx * algo.Length
+					copy(sumBuf[start:], out8[b][:])
+					sig.BlockSums[idx] = BlockSum{
+						Index:  idx,
+						Sum1:   Checksum1(batchBuf[b*int(blockSize) : (b+1)*int(blockSize)]),
+						Sum2:   sumBuf[start : start+algo.Length],
+						Offset: (base + int64(b)) * int64(blockSize),
+						Length: blockSize,
+					}
+				}
+			} else {
+				off := 0
+				for b := 0; b < n; b++ {
+					idx := int(base) + b
+					remain := fileSize - int64(idx)*int64(blockSize)
+					if remain > int64(blockSize) {
+						remain = int64(blockSize)
+					}
+					block := batchBuf[off : off+int(remain)]
+					start := idx * algo.Length
+					algo.FastSum(sumBuf[start:start+algo.Length], block)
+					sig.BlockSums[idx] = BlockSum{
+						Index:  idx,
+						Sum1:   Checksum1(block),
+						Sum2:   sumBuf[start : start+algo.Length],
+						Offset: int64(idx) * int64(blockSize),
+						Length: int32(len(block)),
+					}
+					off += int(remain)
+				}
+			}
+		}
+		return sig
+	}
+
+	// Scalar path: non-md5/sha256 algorithms or platforms without AVX2.
 	buf := make([]byte, blockSize)
 	if algo.FastSum != nil {
 		for i := int64(0); i < numBlocks; i++ {
