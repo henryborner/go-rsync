@@ -184,6 +184,66 @@ Go Plan 9 swaps src1/src2 for non-commutative SIMD instructions:
 - `VPBROADCASTD`: broadcasting `init_s1` into all vector lanes causes lane-count amplification. Use scalar init values at exit instead.
 - Weight tables: `DATA /8` with little-endian uint64 encoding.
 
+### 6.5 Assembly Gotchas — Verified on Go 1.25
+
+Common pitfalls when writing SIMD assembly for Go. These are all confirmed
+on Go 1.25 across Intel Xeon and AMD Zen 4.
+
+**XMM vs YMM register availability.** Older Go assemblers (pre-1.25) only
+exposed `VPADDW` and `VPMADDWD` for YMM registers; the XMM forms produced
+"invalid instruction" errors. This forced the SSE2 checksum path to use
+`VPHADDW` + `VPUNPCK` + `VPADDD` (4–6 instructions) instead of
+`VPADDW` + `VPMADDWD` (2 instructions).  **Fixed in Go 1.25** — all XMM
+packed-word instructions are now available.
+
+**VPGATHERDD (VEX) syntax.** Go Plan 9 assembler uses a non-Intel operand
+order: `VPGATHERDD mask, (base)(index*scale), dst`.  For AVX2 the mask
+is a YMM register:
+
+```asm
+VPGATHERDD Y2, (R8)(Y7*2), Y1    // mask first, VSIB middle, dst last
+```
+
+This was previously worked around with raw `BYTE` opcodes; no longer
+necessary.  (The 16-way AVX-512 form `VPGATHERDD (base)(zmm*1), K1, dst`
+puts the k-mask between the memory operand and the destination.)
+
+**VPGATHERDQ (AVX-512).** Native Go asm syntax:
+`VPGATHERDQ (R8)(Yidx*4), K1, Z10`.  The index register is always YMM
+(8 × int32), the scale multiplies the dword index to get the byte offset.
+For 4-byte-aligned data (all standard rsync block sizes), use scale=4.
+For 8-byte-aligned data use scale=8.  The EVEX.W=1 bit distinguishes it
+from VPGATHERDD; the Go assembler handles this automatically.
+
+**DATA element-size mismatch.**  `DATA foo<>+0(SB)/8, $1` stores one
+int64; loaded with `VMOVDQU64` it gives 8 lanes of `[1,1,1,1,1,1,1,1]`.
+But when used with 32-bit instructions (`VPADDD`), the register is
+interpreted as 16 lanes of int32, yielding `[1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0]` —
+only every OTHER lane gets the constant.  **Always match DATA element
+size to the instruction:** `/4` for int32, `/8` for int64.
+
+**VMOVDQA vs VMOVDQU.**  `VMOVDQA64` requires 64-byte alignment of the
+memory operand; Go DATA symbols are not guaranteed to be aligned.
+Always use `VMOVDQU` variants for load/store unless the symbol is
+explicitly aligned.
+
+**MOVL vs MOVQ on the stack.**  When building gather-index tables on the
+stack, write 32-bit indices with `MOVL` at 4-byte intervals, then load
+with `VMOVDQU32`.  Using `MOVQ` (64-bit stores at 8-byte intervals)
+causes `VMOVDQU32` (32-bit reads at 4-byte intervals) to see garbage in
+odd-numbered lanes.
+
+**Stack zeroing.**  NOSPLIT stack frames are NOT guaranteed to be
+zero-initialized.  Always `MOVQ $0, …` the entire frame before writing
+partial data, especially when loading into SIMD registers where upper
+lanes would otherwise contain garbage indices that cause out-of-bounds
+gather faults.
+
+**VZEROUPPER.**  Mandatory before every `RET` in any function that
+touches YMM or ZMM registers.  Missing it causes severe performance
+degradation (~30%) on subsequent SSE/AVX code due to false
+dependencies.
+
 ## 7. Register Map
 
 | Register | Purpose | Lifetime |
