@@ -4,13 +4,13 @@
 [![Go](https://img.shields.io/badge/Go-1.21+-blue)](https://go.dev)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
-**Go implementation of the rsync delta-transfer algorithm** — the first Go rsync library with AVX2/AVX-512 accelerated MD5 (8-way + 16-way SIMD). Rolling checksum matching, block signature generation, file reconstruction, and a binary wire protocol. Batteries included.
+**Go implementation of the rsync delta-transfer algorithm** — with AVX2/AVX-512 accelerated MD5 (8-way + 16-way SIMD). Rolling checksum matching, block signature generation, file reconstruction, and a binary wire protocol. Batteries included.
 
 Used in production by [Shuttle](https://github.com/henryborner/shuttle), a Windows-native file sync tool.
 
 ## ✨ Features
 
-- **🧬 8-way AVX2 MD5** — 8 blocks hashed in parallel via hand-written AVX2 assembly (YMM registers), VPGATHERDD gather load + transpose. First Go rsync library to do this.
+- **🧬 8-way AVX2 MD5** — 8 blocks hashed in parallel via hand-written AVX2 assembly (YMM registers), VPGATHERDD gather load + transpose.
 - **⚡ 3-tier checksum engine** — AVX2 (64B/iter) → SSE2/SSSE3 (32B/iter) → pure Go 128B batch. Auto-detects CPU at runtime.
 - **🔌 Pluggable strong hash** — md5, sha256, xxh64 built-in. Register your own with `FastSum` support.
 - **📡 Binary wire protocol** — compact big-endian encoding, ready for SSH pipes.
