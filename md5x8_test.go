@@ -40,7 +40,7 @@ func TestMD5x8_SingleBlock(t *testing.T) {
 }
 
 func TestMD5x8_DifferentBlocks(t *testing.T) {
-	// 8 different 700-byte blocks �?each should match its own md5.Sum
+	// 8 different 700-byte blocks →each should match its own md5.Sum
 	data := make([]byte, 8*700)
 	for i := range data {
 		data[i] = byte((i * 7) % 256)
@@ -69,7 +69,7 @@ func TestMD5x8_AVX2_Parity(t *testing.T) {
 		t.Skip("AVX2 not available")
 	}
 
-	// 8 different 700-byte blocks �?AVX2 should match md5.Sum
+	// 8 different 700-byte blocks →AVX2 should match md5.Sum
 	data := make([]byte, 8*700)
 	for i := range data {
 		data[i] = byte((i * 7) % 256)
@@ -239,7 +239,7 @@ func BenchmarkMD5x8_Bulk(b *testing.B) {
 	}
 }
 
-// BenchmarkMD5x8Core_Raw measures PURE md5x8core throughput �?no load-transpose,
+// BenchmarkMD5x8Core_Raw measures PURE md5x8core throughput →no load-transpose,
 // no checksum, just ZMM→ZMM transform. Pre-builds transposed x matrix once.
 func BenchmarkMD5x8Core_Raw(b *testing.B) {
 	if !md5x8available() {

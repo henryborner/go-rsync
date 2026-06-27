@@ -6,9 +6,9 @@
 
 - [1. Architecture Overview](#1-架构概览)
 - [2. Core Files](#2-核心文件)
-- [3. Technical Highlights](#3-技术要�?
+- [3. Technical Highlights](#3-技术要→
 - [4. Regeneration](#4-重新生成)
-- [5. Safety Checklist](#5-安全检查清�?
+- [5. Safety Checklist](#5-安全检查清→
 - [6. Go Plan 9 Assembly Notes](#6-go-plan-9-汇编注意事项)
 - [7. Debugging Log (2026-06-26)](#7-调试日志2026-06-26)
 - [8. Lessons Learned](#8-经验教训)
@@ -16,18 +16,18 @@
 ## 1. Architecture Overview
 
 ```
-GenerateSignature(data, blockSize) �?GenerateSignatureReader(io.Reader, ...)
-�?├─ Checksum1 (weak) ──────────────────────────────────────────
-�?  ├─ [amd64] AVX2 64B/iter  �?rolling_amd64.s
-�?  ├─ [amd64] SSE2 32B/iter  �?rolling_sse2_amd64.s
-�?  └─ [!amd64] byte loop     �?rolling_generic.go
-�?└─ strong hash (MD5) ─────────────────────────────────────────
+GenerateSignature(data, blockSize) →GenerateSignatureReader(io.Reader, ...)
+→├─ Checksum1 (weak) ──────────────────────────────────────────
+→  ├─ [amd64] AVX2 64B/iter  →rolling_amd64.s
+→  ├─ [amd64] SSE2 32B/iter  →rolling_sse2_amd64.s
+→  └─ [!amd64] byte loop     →rolling_generic.go
+→└─ strong hash (MD5) ─────────────────────────────────────────
     ├─ Phase 1: N full 64B blocks, batched SIMD
-    �?    load+gather �?md5x8core (or md5x16core)
+    →    load+gather →md5x8core (or md5x16core)
     ├─ Phase 2: tail + padding (md5Finalize8way / scalar fallback)
     └─ [!amd64] crypto/md5 stub
 
-Path selection: AVX-512 (blockSize �?2KB) �?AVX2 �?scalar
+Path selection: AVX-512 (blockSize →2KB) →AVX2 →scalar
 ```
 
 ## 2. Core Files
@@ -38,7 +38,7 @@ Path selection: AVX-512 (blockSize �?2KB) �?AVX2 �?scalar
 | `md5x8_gather_amd64.s` | **Raw machine code** VPGATHERDD load+transpose (BYTE opcodes) |
 | `md5x8_load_transpose_amd64.s` | VPINSRD scalar fallback (~288 instrs/block, always correct) |
 | `md5x8_purego.go` | Pure Go 8-way MD5 reference implementation (for verification & non-AVX2 fallback) |
-| `md5x8_transpose.s` | Contiguous 8×64�?6 YMM transpose (tail only) |
+| `md5x8_transpose.s` | Contiguous 8×64→6 YMM transpose (tail only) |
 | `md5x8_transpose_fast_amd64.s` | Register shuffle transpose (~80 vs ~320 VPINSRD) |
 | `md5x8_amd64.go` | Glue code: `md5Hash8wayAVX2`, finalization |
 | `md5x8_common.go` | Shared constants `t256[]`, `shifts[]`, `md5FinalLane` |
@@ -73,7 +73,7 @@ Go Plan 9's VPGATHERDD encoding has multiple errors: base register is hardcoded 
 Encoding of `VPGATHERDD Y2, disp(R8)(Y7*2), Y1`:
 ```
 C4 C2 6D 90 [ModRM] 78 [disp8]
-    �?VEX3   �?opcode  �?VSIB (scale=×2,idx=Y7,base=R8)
+    →VEX3   →opcode  →VSIB (scale=×2,idx=Y7,base=R8)
 ```
 Word 0 (no displacement): `BYTE $0xC4; BYTE $0xC2; BYTE $0x6D; BYTE $0x90; BYTE $0x0C; BYTE $0x78`
 Word N (displacement=N*4): same but ModRM=`4C` + trailing `BYTE $disp`
@@ -100,21 +100,21 @@ MD5 requires `digest += initial` after each block. Initial state saved to Y4-Y7 
 
 ### Threshold
 
-AVX-512 gather overhead hurts small blocks. Enable AVX-512 when `blockSize �?2048`; smaller uses AVX2.
+AVX-512 gather overhead hurts small blocks. Enable AVX-512 when `blockSize →2048`; smaller uses AVX2.
 
 ## 4. Regeneration
 
 ```bash
-cd gen_md5x8 && go run .    # �?../md5x8_amd64.s
-cd gen_md5x16 && go run .   # �?../md5x16_amd64.s
+cd gen_md5x8 && go run .    # →../md5x8_amd64.s
+cd gen_md5x16 && go run .   # →../md5x16_amd64.s
 ```
 
 ## 5. Safety Checklist
 
 Verify each item after modifying assembly:
 
-- [ ] `go vet .` �?zero warnings
-- [ ] `go test -count=1 .` �?all tests pass (including AVX-512 parity, if CPU supports)
+- [ ] `go vet .` →zero warnings
+- [ ] `go test -count=1 .` →all tests pass (including AVX-512 parity, if CPU supports)
 - [ ] All YMM/ZMM functions have `VZEROUPPER` before `RET`
 - [ ] VPGATHERDD reloads mask **before every** gather (instruction zeros the mask)
 - [ ] VPTERNLOGD immediates use Go-swapped operand order (not Intel manual values)
@@ -134,7 +134,7 @@ Go Plan 9 `VPTERNLOGD imm,src1,src2,dst` computes truth-table index as `n = (dst
 
 ### VPGATHERDD Syntax
 
-Go asm order is `(base)(idx*scale), mask, dst` �?not Intel's `mask, mem, dst`. AVX-512 requires `K1` (k-mask), not `YMM`.
+Go asm order is `(base)(idx*scale), mask, dst` →not Intel's `mask, mem, dst`. AVX-512 requires `K1` (k-mask), not `YMM`.
 
 ### VPGATHERDD Mask Initialization
 
@@ -150,7 +150,7 @@ Go asm: signed first, unsigned second. Intel manual order is reversed.
 
 ### Miscellaneous
 
-- **PowerShell encoding**: `Set-Content` �?UTF-16. Use editor to edit `.s` files, not shell redirection.
+- **PowerShell encoding**: `Set-Content` →UTF-16. Use editor to edit `.s` files, not shell redirection.
 - **Cross-compilation**: `$env:GOOS` persists in PowerShell. Clear with `$env:GOOS=""` after cross-compiling.
 
 ## 7. Debugging Log (2026-06-26)
@@ -163,7 +163,7 @@ Go asm: signed first, unsigned second. Intel manual order is reversed.
 
 ### 7.2 Weak Checksum vs Strong Checksum Mismatch
 
-`Checksum1()` and `RollingSum.Value()` matched for all blocks �?the weak checksum path was correct. But `sig.Sum2` (stored MD5) �?`md5.Sum()` �?the two paths produced different strong hashes. The AVX2 MD5 core was generating wrong signatures, so `computeStrong()` (standard `md5.New()`) could never match.
+`Checksum1()` and `RollingSum.Value()` matched for all blocks →the weak checksum path was correct. But `sig.Sum2` (stored MD5) →`md5.Sum()` →the two paths produced different strong hashes. The AVX2 MD5 core was generating wrong signatures, so `computeStrong()` (standard `md5.New()`) could never match.
 
 ### 7.3 Root Cause: VPANDN Operand Order (v0.1.4.2)
 
@@ -171,11 +171,11 @@ Go Plan 9 `VPANDN A,B,C` = `C = A &^ B` (Plan 9 semantics), not Intel's `C = ~A 
 
 The code generator `gen_md5x8/main.go` was written with Intel semantics, causing all three rounds using VPANDN (R1, R2, R4) to produce wrong F function results.
 
-**Fix**: Swap operands in generator �?regenerate `md5x8_amd64.s`. Added `TestMD5x8_AVX2_Parity` for verification.
+**Fix**: Swap operands in generator →regenerate `md5x8_amd64.s`. Added `TestMD5x8_AVX2_Parity` for verification.
 
 ### 7.4 Secondary Bug: VPGATHERDD Mask Zeroing (v0.1.4.2–v0.1.4.3)
 
-VPGATHERDD zeros the mask register after execution. The gather function set the all-ones mask only once, then ran 16 gathers �?only the first worked, all subsequent reads got zero data.
+VPGATHERDD zeros the mask register after execution. The gather function set the all-ones mask only once, then ran 16 gathers →only the first worked, all subsequent reads got zero data.
 
 **Fix**: Precompute all-ones in a spare register (`VPCMPEQD Y3,Y3,Y3`), reload mask via `VMOVDQA Y3,Y2` before each gather.
 
@@ -185,7 +185,7 @@ Go Plan 9's VPGATHERDD assembly encoding had multiple issues:
 - Base register: hardcoded to the first encountered value; runtime modification of R8/R12/BP had no effect
 - VSIB displacement: produced wrong addresses
 - Non-Y1 destination register: may return zero data
-- Scale factor �?: may encode incorrectly
+- Scale factor →: may encode incorrectly
 
 Confirmed through exhaustive testing (scale=1/2/4 × byte/dword/word offset × R8/R10/R12/BP base × LEAQ/ADDQ base modification).
 
@@ -197,19 +197,19 @@ AVX-512 uses `VPTERNLOGD` for the round function (no VPANDN), so the core itself
 
 **Fix**: Manually expand WORD16 macro to DATA/GLOBL declarations; add `KXNORW K1,K1,K1` before each VPGATHERDD.
 
-### 7.7 AVX-512: VPTERNLOGD Operand Swap (v0.1.4.4) �?Critical
+### 7.7 AVX-512: VPTERNLOGD Operand Swap (v0.1.4.4) →Critical
 
 Go Plan 9 `VPTERNLOGD` swaps src1/src2, the same bug as VPANDN:
 
 ```
 Intel:  n = (dst<<2)|(src1<<1)|src2     (dst=zmm1, src1=zmm2, src2=zmm3)
-Go asm: n = (dst<<2)|(src2<<1)|src1     �?SWAPPED!
+Go asm: n = (dst<<2)|(src2<<1)|src1     →SWAPPED!
 ```
 
 Why it went undetected for so long:
 - AVX2 tests passed (AVX2 uses VPANDN, not VPTERNLOGD)
 - No AVX-512 parity test existed (local Ryzen 9 supports AVX-512 but tests used blockSize=700, below AVX-512 threshold of 2048)
-- Old immediates (R2=$0xE2, R4=$0xD9) coincidentally passed `TestMD5x16_UnevenLengths` because minFullChunks=0 �?scalar fallback path, VPTERNLOGD never executed
+- Old immediates (R2=$0xE2, R4=$0xD9) coincidentally passed `TestMD5x16_UnevenLengths` because minFullChunks=0 →scalar fallback path, VPTERNLOGD never executed
 
 **Correct Go Plan 9 VPTERNLOGD immediates**:
 
@@ -221,7 +221,7 @@ Why it went undetected for so long:
 
 R3 uses VPXOR (no operand order issue, always correct).
 
-**Impact**: 1GB identical file sync took over 2 minutes �?server side (Xeon, AVX-512) generated wrong MD5 signatures, client side (stdlib MD5) found zero matches �?byte-by-byte scan of 1 billion positions.
+**Impact**: 1GB identical file sync took over 2 minutes →server side (Xeon, AVX-512) generated wrong MD5 signatures, client side (stdlib MD5) found zero matches →byte-by-byte scan of 1 billion positions.
 
 **Fix**: Recompute imm8 values for Go-swapped order, regenerate `md5x16_amd64.s`. Added 3 AVX-512 parity tests to prevent regression.
 
@@ -230,7 +230,7 @@ R3 uses VPXOR (no operand order issue, always correct).
 1. **Verify assembly against the standard library.** `md5.Sum()` is the ground truth. `TestMD5x8_AVX2_Parity` and `TestMD5x16_AVX512_Parity` now guard against all regressions.
 2. **Test every code path.** AVX-512 parity went untested for weeks because the default test blockSize=700 was below the AVX-512 threshold (2048). `TestMD5x16_*` tests now explicitly use large blocks.
 3. **VPGATHERDD zeros the mask.** Always reload the mask before every gather.
-4. **Go Plan 9 operand order �?Intel.** Always verify with a small test before writing large assembly functions. We've stepped on this landmine three times now: `VPMADDUBSW`, `VPANDN`, and `VPTERNLOGD`.
+4. **Go Plan 9 operand order →Intel.** Always verify with a small test before writing large assembly functions. We've stepped on this landmine three times now: `VPMADDUBSW`, `VPANDN`, and `VPTERNLOGD`.
 5. **`BYTE` raw machine code is a viable escape hatch** when the assembler has encoding bugs. Machine code format is stable; the assembler is not.
 6. **Pure Go reference implementation is critical for debugging.** `md5x8_purego.go` played a key role in isolating every bug.
 
@@ -239,12 +239,12 @@ R3 uses VPXOR (no operand order issue, always correct).
 > Related docs: [Checksum Engine](checksum-engine.md) · [Project README](../README.md)
 ```
 
-**翻译摘要�?*
-- 将所有中文标题（`## 目录` �?`## Table of Contents`、`## 1. 架构概览` �?`## 1. Architecture Overview` 等）翻译为英�?- 将所有中文段落、项目符号和表格标题（`用途` �?`Purpose`）翻译为英文
+**翻译摘要→*
+- 将所有中文标题（`## 目录` →`## Table of Contents`、`## 1. 架构概览` →`## 1. Architecture Overview` 等）翻译为英→- 将所有中文段落、项目符号和表格标题（`用途` →`Purpose`）翻译为英文
 - 将所有中文调试日志条目翻译为英文
 - 保持所有代码块、汇编片段、文件路径、寄存器名称、立即数值和数字完全不变
-- 保持所有交叉引用链接（`checksum-engine.md`、`../README.md`）不�
+- 保持所有交叉引用链接（`checksum-engine.md`、`../README.md`）不—
 
 ---
 
-> Related docs: [Checksum Engine](checksum-engine.md) �� [Project README](../README.md)
+> Related docs: [Checksum Engine](checksum-engine.md) —— [Project README](../README.md)
