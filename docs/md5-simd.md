@@ -156,18 +156,20 @@ VPGATHERDD **zeros the mask register** after execution (Intel specification). Mu
 
 Without reload, subsequent gathers silently read zero data.
 
-### 6.3 Go Assembler VSIB Bug
+### 6.3 VPGATHERDD Go Assembly Syntax (Go 1.25+)
 
-Go Plan 9's VPGATHERDD encoding has multiple issues: base register is hardcoded, VSIB displacement produces wrong addresses, and non-standard destination registers may return zeros.
+As of Go 1.25, the assembler correctly supports VPGATHERDD with VSIB for both
+VEX (AVX2) and EVEX (AVX-512) encodings.  The AVX2 form uses a YMM mask register
+as the first operand; the AVX-512 form uses a k-mask.
 
-**Workaround**: Raw machine code via `BYTE` pseudo-instructions, bypassing the Go assembler entirely. The 6-byte encoding (`VEX3 + opcode + ModRM + VSIB + disp8`) is stable x86 machine code.
+| Path | Go Plan 9 syntax |
+|------|-----------------|
+| AVX2 | `VPGATHERDD Y2, 4(R8)(Y7*2), Y1`  *(mask, mem-vsib, dst)* |
+| AVX-512 | `VPGATHERDD (R8)(Z20*1), K1, Z10`  *(mem-vsib, kmask, dst)* |
 
-Encoding for `VPGATHERDD Y2, disp(R8)(Y7*2), Y1`:
-```
-C4 C2 6D 90 [ModRM] 78 [disp8]
-    ↑ VEX3   ↑ opcode  ↑ VSIB (scale=×2, idx=Y7, base=R8)
-```
-Word 0 (no displacement): `BYTE $0xC4; BYTE $0xC2; BYTE $0x6D; BYTE $0x90; BYTE $0x0C; BYTE $0x78`
+> **Historical note (pre-Go 1.25)**: Older Go assemblers had a VSIB encoding bug
+> for VEX-encoded VPGATHERDD.  The workaround was raw `BYTE` pseudo-instructions.
+> This is no longer necessary.
 
 ## 7. Assembly Notes
 

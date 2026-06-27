@@ -34,7 +34,7 @@ func md5x8transpose(buf *[8][64]byte, x *[16][8]uint32)
 //go:noescape
 func md5x8TransposeFast(buf *[8][64]byte, x *[16][8]uint32)
 
-// md5x8LoadTransposeGather uses VPGATHERDD (raw machine code) to load+transpose.
+// md5x8LoadTransposeGather uses VPGATHERDD to load+transpose 8 scattered blocks.
 //
 //go:noescape
 func md5x8LoadTransposeGather(data []byte, offsets *[8]int, chunk int, x *[16][8]uint32)
@@ -70,7 +70,7 @@ func md5Hash8wayAVX2(data []byte, offsets [8]int, lengths [8]int, out *[8][16]by
 	var x [16][8]uint32
 
 	// Phase 1: 8-way AVX2 for common full chunks.
-	// Uses raw machine code VPGATHERDD (bypasses Go asm VSIB bug).
+	// VPGATHERDD loads 8 scattered blocks in a single pass per word.
 	for chunk := 0; chunk < minFullChunks; chunk++ {
 		md5x8LoadTransposeGather(data, &offsets, chunk, &x)
 		md5x8core(&x, &state)
