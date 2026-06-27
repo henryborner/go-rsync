@@ -23,6 +23,23 @@ func Delta(oldFile, newFile []byte, blockSize int32, algo string) []MatchResult 
 	return eng.Search(newFile)
 }
 
+// DeltaFromWire reads a wire-encoded signature from r, then computes the
+// delta against newFile.  Returns both the instruction stream and the
+// MatchEngine so callers can inspect LiteralBytes for perfect-match
+// optimisations.
+//
+// DeltaFromWire 从 r 读取 wire 格式的签名，然后计算与 newFile 的 delta。
+// 同时返回指令流和 MatchEngine，以便调用者检查 LiteralBytes 实现完全匹配优化。
+func DeltaFromWire(r io.Reader, newFile []byte, algo string) ([]MatchResult, *MatchEngine, error) {
+	sig, err := WireDecodeSignature(r)
+	if err != nil {
+		return nil, nil, err
+	}
+	eng := NewMatchEngine(sig.BlockSize, algo)
+	eng.LoadSignature(sig)
+	return eng.Search(newFile), eng, nil
+}
+
 // ApplyDelta reconstructs newFile from basisFile and an instruction stream.
 // Wraps NewReconstructor + Reconstruct.
 //
