@@ -40,20 +40,24 @@ func main() {
 
     blockSize := delta.CalculateBlockSize(int64(len(oldFile)))
 
-    // 1. Generate signature from old file
-    sig := delta.GenerateSignature(oldFile, blockSize, "md5")
-
-    // 2. Search new file for matching blocks
-    eng := delta.NewMatchEngine(blockSize, "md5")
-    eng.LoadSignature(sig)
-    instructions := eng.Search(newFile)
-
-    // 3. Reconstruct on the other side
-    recon := delta.NewReconstructor(oldFile, blockSize, "md5")
-    result, _ := recon.Reconstruct(instructions)
-
+    // One-liner: compute delta and reconstruct
+    result, err := delta.RoundTrip(oldFile, newFile, blockSize, "md5")
+    if err != nil {
+        panic(err)
+    }
     os.WriteFile("v2_reconstructed.bin", result, 0644)
 }
+```
+
+For network use, split into sender/receiver:
+
+```go
+// --- Sender side ---
+insts := delta.Delta(oldFile, newFile, blockSize, "md5")
+delta.WireEncodeInstructions(conn, insts)
+
+// --- Receiver side ---
+delta.ApplyDeltaStream(oldFile, conn, outputFile, blockSize, "md5")
 ```
 
 ## 📊 Benchmarks
