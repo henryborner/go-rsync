@@ -105,6 +105,12 @@ func init() {
 		Length:  8,
 		FastSum: xxh64FastSum,
 	})
+	Register(ChecksumAlgo{
+		Name:    "xxh3",
+		New:     newXXH3,
+		Length:  16,
+		FastSum: xxh3FastSum,
+	})
 }
 
 // Register registers a checksum algorithm (thread-safe).
