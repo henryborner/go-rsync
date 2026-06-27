@@ -37,7 +37,7 @@ type hashEntry struct {
 }
 
 // computeTableSize returns hash table size with ~80% load factor.
-// Same formula as rsync: count/8*10+11, minimum 65536.
+// Standard hash table sizing: count/8*10+11, minimum 65536.
 func computeTableSize(blockCount int) uint32 {
 	ts := uint32(blockCount/8)*10 + 11
 	if ts < 65536 {
@@ -91,7 +91,7 @@ func (me *MatchEngine) LoadSignature(sig *Signature) {
 }
 
 func (me *MatchEngine) buildHashTable() {
-	// Dynamic table size: ~80% load factor, same formula as rsync.
+	// Dynamic table size: ~80% load factor.
 	// Odd size ensures modulo distributes across all buckets.
 	ts := computeTableSize(len(me.checksums))
 	me.tableSize = ts
@@ -101,7 +101,7 @@ func (me *MatchEngine) buildHashTable() {
 		var h uint32
 		if ts == 65536 {
 			// Traditional: (s1+s2) & 0xFFFF for 16-bit hash.
-			// Using s1+s2 (like rsync's SUM2HASH2) gives much better
+			// Using the full Sum1 value (s1 + s2 packed) gives much better
 			// distribution than s1 alone.
 			h = (cs.Sum1 + cs.Sum1>>16) & 0xFFFF
 		} else {
@@ -148,7 +148,7 @@ func (me *MatchEngine) Search(data []byte) []MatchResult {
 		if len(bucket) > 0 {
 			me.HashHits++
 
-			// Lazy strong sum: only compute MD5 when sum1 matches (same as rsync's done_csum2).
+			// Lazy strong sum: only compute MD5 when sum1 matches.
 			// For large files, 99%+ of hash hits fail at sum1 comparison.
 			// Computing MD5 before sum1 check wastes ~16TB of hashing on a 1GB file.
 			var sum2Done bool

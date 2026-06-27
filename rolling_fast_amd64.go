@@ -56,7 +56,7 @@ func checksum1(data []byte) (uint32, uint32) {
 
 	// Go 128B batch fallback
 	i := 0
-	// 128B main loop: 4 unrolled 32B rsync-verified batches
+	// 128B main loop: 4 unrolled 32B batches
 	for i+128 <= n {
 		// Batch 0 (bytes 0..31)
 		var g0 [8]uint32

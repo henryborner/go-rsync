@@ -15,7 +15,7 @@ Used in production by [Shuttle](https://github.com/henryborner/shuttle), a Windo
 - **🔌 Pluggable strong hash** — md5, sha256, xxh64 built-in. Register your own with `FastSum` support.
 - **📡 Binary wire protocol** — compact big-endian encoding, ready for SSH pipes.
 - **💧 Streaming I/O** — generate signatures from `io.Reader`, decode instructions one-at-a-time, minimal memory.
-- **🔗 rsync-derived checksum** — CHAR_OFFSET=31 (stronger than rsync's default 0), same uint32 natural-overflow arithmetic.
+- **🔗 Rolling checksum** — CHAR_OFFSET=31, uint32 natural-overflow arithmetic.
 - **🧪 Well tested** — roundtrip, identical-file, parity tests (AVX2 vs SSE2 vs pure Go), MD5 8-way + 16-way validation (AVX2 + AVX-512 vs stdlib).
 
 ## 📦 Install

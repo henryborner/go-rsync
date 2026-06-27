@@ -36,8 +36,8 @@
 //
 // # Relationship to rsync
 //
-// The rolling checksum algorithm uses rsync's CHAR_OFFSET=31 configuration
-// (stronger than the default 0; not wire-compatible with standard rsync builds).
+// The rolling checksum uses CHAR_OFFSET=31.
+// (Note: standard rsync builds use CHAR_OFFSET=0; not wire-compatible.)
 // The hash-table matching and block-size goal (~√N blocks) follow the same
 // approach.  This package is NOT a wire-compatible
 // rsync client — it provides the building blocks so you can embed delta

@@ -2,7 +2,7 @@
 
 > Originally developed for [Shuttle](https://github.com/henryborner/shuttle), now a standalone library.
 >
-> The checksum algorithm and deferred-reduction structure draw from studying rsync's `checksum.c` and `simd-checksum-avx2.S`. The VPMADDWD pair-sum approach and Go Plan 9 assembly adaptations are original work.
+> The rolling checksum algorithm follows the well-known rsync formula (CHAR_OFFSET, uint32 natural-overflow). The VPMADDWD pair-sum approach, deferred-reduction structure, and Go Plan 9 assembly implementations are original work.
 
 ## Contents
 
@@ -30,7 +30,7 @@
 | PREFETCHT0 | Yes (384-byte ahead prefetch) |
 | Loop instructions | **19** (down 1 from v4's 20) |
 
-> **Core idea**: Both s1 and s2 use VPMADDWD for pair-sum â€?one instruction multiplies adjacent int16 pairs by 1 and sums them. s2 values per half-YMM never exceed 32767 (max: 64Ã—255+63Ã—255=32,385), no VPADDW merge needed; each half uses VPMADDWD separately then merged as int32. Both paths use deferred reduction.
+> **Core idea**: Both s1 and s2 use VPMADDWD for pair-sum ï¿½?one instruction multiplies adjacent int16 pairs by 1 and sums them. s2 values per half-YMM never exceed 32767 (max: 64Ã—255+63Ã—255=32,385), no VPADDW merge needed; each half uses VPMADDWD separately then merged as int32. Both paths use deferred reduction.
 
 ## 2. Algorithm
 
@@ -51,12 +51,12 @@ s2 = 64 Ã— Î£ s1_before_k + Î£ weighted_sum_k                  (Y4 = Î£s1_before
 **s1 reduction** uses VPMADDWD with int16 all-ones constant (Y11):
 
 ```
-VPMADDUBSW â†?VPADDW (merge two halves) â†?VPMADDWD Ã— int16_ones â†?8Ã—int32 delta_s1
+VPMADDUBSW ï¿½?VPADDW (merge two halves) ï¿½?VPMADDWD Ã— int16_ones ï¿½?8Ã—int32 delta_s1
 ```
 
-One instruction replaces VPUNPCKLWD + VPUNPCKHWD + VPADDD (3â†?). This works because byte sums never exceed signed int16 range (<32767).
+One instruction replaces VPUNPCKLWD + VPUNPCKHWD + VPADDD (3ï¿½?). This works because byte sums never exceed signed int16 range (<32767).
 
-**s2 weighted reduction** uses VPMADDWD per half (same trick as s1). int16 values per half < 32767, so VPMADDWD pair-sum is safe. No VPADDW merge needed â€?each half VPMADDWD separately then merged as int32.
+**s2 weighted reduction** uses VPMADDWD per half (same trick as s1). int16 values per half < 32767, so VPMADDWD pair-sum is safe. No VPADDW merge needed ï¿½?each half VPMADDWD separately then merged as int32.
 
 ### 2.2 Initial Value Exit Correction
 
@@ -83,7 +83,7 @@ s2 += uint32(n) * uint32(n+1) / 2 * CHAR_OFFSET
 
 ### 2.4 Remaining Bytes
 
-Asm handles all bytes â€?full 64B blocks and scalar remainder (0..63 bytes) processed in a byte-by-byte loop after the main loop. Go side needs no further remainder handling.
+Asm handles all bytes ï¿½?full 64B blocks and scalar remainder (0..63 bytes) processed in a byte-by-byte loop after the main loop. Go side needs no further remainder handling.
 
 ## 3. Loop Structure
 
@@ -91,20 +91,20 @@ Asm handles all bytes â€?full 64B blocks and scalar remainder (0..63 bytes) proc
 
 ```asm
 loop:
-    ; s1: VPMADDUBSW Ã—2 halves â†?VPADDW merge â†?VPMADDWD pair-sum
-    VPMADDUBSW  Y15, Y2, Y0        ; first 32B â†?16 int16
-    VPMADDUBSW  Y15, Y8, Y6        ; second 32B â†?16 int16
+    ; s1: VPMADDUBSW Ã—2 halves ï¿½?VPADDW merge ï¿½?VPMADDWD pair-sum
+    VPMADDUBSW  Y15, Y2, Y0        ; first 32B ï¿½?16 int16
+    VPMADDUBSW  Y15, Y8, Y6        ; second 32B ï¿½?16 int16
     VPADDW      Y6, Y0, Y0         ; merge two halves (16-bit)
-    VPMADDWD    Y11, Y0, Y0        ; pair-sum â†?8Ã—int32 delta_s1
+    VPMADDWD    Y11, Y0, Y0        ; pair-sum ï¿½?8Ã—int32 delta_s1
 
-    ; s2: Y4 += Y14 (s1_before accumulation â€?deferred)
+    ; s2: Y4 += Y14 (s1_before accumulation ï¿½?deferred)
     VPADDD      Y4, Y14, Y4
 
-    ; s2: VPMADDUBSW Ã— weight table â†?VPMADDWD per half â†?merge as int32
+    ; s2: VPMADDUBSW Ã— weight table ï¿½?VPMADDWD per half ï¿½?merge as int32
     VPMADDUBSW  Y7, Y2, Y2         ; first 32B Ã— [64..33]
     VPMADDUBSW  Y13, Y8, Y3        ; second 32B Ã— [32..1]
-    VPMADDWD    Y11, Y2, Y2        ; first half â†?8 int32 pair-sums
-    VPMADDWD    Y11, Y3, Y3        ; second half â†?8 int32
+    VPMADDWD    Y11, Y2, Y2        ; first half ï¿½?8 int32 pair-sums
+    VPMADDWD    Y11, Y3, Y3        ; second half ï¿½?8 int32
     VPADDD      Y3, Y2, Y2         ; merge two halves (32-bit)
     VPADDD      Y12, Y2, Y12       ; Y12 += weighted_sum
 
@@ -126,7 +126,7 @@ done:
 **Key design decisions:**
 
 - **Both s1 and s2 use VPMADDWD**: int16 values per half < 32767 (s2 max: 64Ã—255+63Ã—255=32,385). No VPUNPCK needed anywhere.
-- **Interleaved VPMADDUBSW**: s1 issued first, s2 follows â€?avoids 4 instructions contending for ports 0/5 simultaneously.
+- **Interleaved VPMADDUBSW**: s1 issued first, s2 follows ï¿½?avoids 4 instructions contending for ports 0/5 simultaneously.
 - **PREFETCHT0**: ~3% gain on Xeon cloud VM, zero cost on Zen 4. Kept for older CPU compatibility.
 - **Bottom load + guard**: `SUBQ/JZ` checks before load, prevents overread on last iteration.
 - **Merged exit reduction**: Y4Ã—64 + Y12 merged then one horizontal sum (saves ~5 instructions vs two separate reductions).
@@ -140,22 +140,22 @@ done:
 | Intel manual | **unsigned** | **signed** |
 | Go Plan 9 asm | **signed** | **unsigned** |
 
-Verified by diagnosis: `VPMADDUBSW data, ones` â†?data treated as signed; `VPMADDUBSW ones, data` â†?data treated as unsigned.
+Verified by diagnosis: `VPMADDUBSW data, ones` ï¿½?data treated as signed; `VPMADDUBSW ones, data` ï¿½?data treated as unsigned.
 
-This project's usage: `VPMADDUBSW Y15(ones=+1 signed), data(unsigned), dst` â†?correct unsigned summation.
+This project's usage: `VPMADDUBSW Y15(ones=+1 signed), data(unsigned), dst` ï¿½?correct unsigned summation.
 
-### 4.2 VPUNPCKLWD / VPUNPCKHWD Lane Behavior (historical â€?no longer used in AVX2 path)
+### 4.2 VPUNPCKLWD / VPUNPCKHWD Lane Behavior (historical ï¿½?no longer used in AVX2 path)
 
 SSE2 path still uses VPUNPCK for width extension. In the AVX2 path, VPMADDWD has replaced VPUNPCK for both s1 and s2.
 
-- `VPUNPCKLWD Y5(zero), Y0, Y3` â€?zero-extends the 8 even-indexed int16 values from 16 int16 to 8 int32, operates across two 128-bit lanes without VEXTRACTI128.
-- `VPUNPCKHWD Y5(zero), Y0, Y0` â€?zero-extends the 8 odd-indexed values to 8 int32.
+- `VPUNPCKLWD Y5(zero), Y0, Y3` ï¿½?zero-extends the 8 even-indexed int16 values from 16 int16 to 8 int32, operates across two 128-bit lanes without VEXTRACTI128.
+- `VPUNPCKHWD Y5(zero), Y0, Y0` ï¿½?zero-extends the 8 odd-indexed values to 8 int32.
 
 The pair (8+8=16) covers all 16 int16 results from VPMADDUBSW.
 
 ### 4.3 XMM/YMM Register Aliasing
 
-`X0` is the lower 128 bits of `Y0`, not an independent register. Writing `Y0` automatically updates `X0`. Exit reduction exploits this â€?no `VEXTRACTI128 $0, Y0, X0` needed.
+`X0` is the lower 128 bits of `Y0`, not an independent register. Writing `Y0` automatically updates `X0`. Exit reduction exploits this ï¿½?no `VEXTRACTI128 $0, Y0, X0` needed.
 
 ### 4.4 VPANDN / VPTERNLOGD Operand Swap (MD5 core)
 
@@ -164,7 +164,7 @@ Go Plan 9 swaps src1/src2 for all non-commutative SIMD instructions:
 | Instruction | Intel manual | Go Plan 9 asm |
 |------------|-------------|---------------|
 | `VPANDN A,B,C` | `C = ~A & B` | `C = A &^ B` (A & ~B) |
-| `VPTERNLOGD imm,A,B,C` | n = (C<<2)\|(A<<1)\|B | n = (C<<2)\|(B<<1)\|A â†?**swapped** |
+| `VPTERNLOGD imm,A,B,C` | n = (C<<2)\|(A<<1)\|B | n = (C<<2)\|(B<<1)\|A ï¿½?**swapped** |
 
 `VPTERNLOGD` truth-table immediates must be computed with Go's swapped ordering. Using Intel manual values ($0xB8/$0xCA/$0x65) produces wrong MD5 hashes. Correct Go-swapped values: R1=$0xD8, R2=$0xAC, R4=$0x63. See corrected generators in `gen_md5x8/main.go` and `gen_md5x16/main.go`.
 
@@ -178,20 +178,20 @@ Go Plan 9 swaps src1/src2 for all non-commutative SIMD instructions:
 
 | Version | Key Changes | Loop Instructions | Xeon 1KB | Ryzen 64KB |
 |---------|-----------|:-----------:|:--------:|:----------:|
-| v0 (baseline) | Signed VPMADDUBSW + VPMOVSXWD + per-iteration s1 reduction | 45 | â€?| â€?|
-| â€?| Unsigned + VPUNPCK zero-extension | 41 | â€?| â€?|
-| â€?| Preload low-weight table Y13 | 36 | â€?| â€?|
-| â€?| s1 deferred reduction | 27 | â€?| â€?|
+| v0 (baseline) | Signed VPMADDUBSW + VPMOVSXWD + per-iteration s1 reduction | 45 | ï¿½?| ï¿½?|
+| ï¿½?| Unsigned + VPUNPCK zero-extension | 41 | ï¿½?| ï¿½?|
+| ï¿½?| Preload low-weight table Y13 | 36 | ï¿½?| ï¿½?|
+| ï¿½?| s1 deferred reduction | 27 | ï¿½?| ï¿½?|
 | v1 | Bottom load eliminates Y9/Y10 + VPBROADCASTD fix | 28 | 27.2 GB/s | 51.5 GB/s |
 | v2 | VPADDW merge-first-then-extend (saves 6 instructions) | 22 | 35.8 GB/s | 64.1 GB/s |
 | v3 | PREFETCHT0 + overread guard (safe bottom load) | 22 | 36.6 GB/s | 59.6 GB/s |
-| **v4** | **s1 uses VPMADDWD pair-sum** (saves 2 instructions) | **20** | **â€?* | **69.2 GB/s** |
-| v5 | **s2 per-half VPMADDWD** + asm scalar remainder + merged exit reduction | **19** | 35.1 GB/s | â€?|
-| **v6** | **CHAR_OFFSET + packing in asm** (`checksum1PackedAVX2`), merged ones tables | **19** | **37.4 GB/s** | â€?|
+| **v4** | **s1 uses VPMADDWD pair-sum** (saves 2 instructions) | **20** | **ï¿½?* | **69.2 GB/s** |
+| v5 | **s2 per-half VPMADDWD** + asm scalar remainder + merged exit reduction | **19** | 35.1 GB/s | ï¿½?|
+| **v6** | **CHAR_OFFSET + packing in asm** (`checksum1PackedAVX2`), merged ones tables | **19** | **37.4 GB/s** | ï¿½?|
 
-**Cumulative**: 28â†?9 instructions (âˆ?2%), Xeon 1KB throughput +38%. 64KB gap vs rsync within 1.4%.
+**Cumulative**: 28ï¿½?9 instructions (ï¿½?2%), Xeon 1KB throughput +38%. 64KB gap vs rsync within 1.4%.
 
-> **VPSRLD dead end**: tried using VPSRLD for packed reduction (3â†? instructions). High 16 bits had garbage data causing s1 amplified 32768Ã—. Rejected â€?`Roll()` requires full 32-bit correctness.
+> **VPSRLD dead end**: tried using VPSRLD for packed reduction (3ï¿½? instructions). High 16 bits had garbage data causing s1 amplified 32768Ã—. Rejected ï¿½?`Roll()` requires full 32-bit correctness.
 
 ## 6. Known Bugs and Fixes
 
@@ -203,25 +203,25 @@ Go Plan 9 swaps src1/src2 for all non-commutative SIMD instructions:
 
 s2 weight load segment used `LEAQ mul_T2<>+32(SB), AX; VMOVDQU (AX), Y15`, corrupting the all-ones constant table. Fix: use separate Y13 to load low weights.
 
-### 6.3 VPANDN Operand Swap â€?AVX2 MD5 (v0.1.4.2)
+### 6.3 VPANDN Operand Swap ï¿½?AVX2 MD5 (v0.1.4.2)
 
 Go Plan 9's `VPANDN A,B,C` = `C = A &^ B`, not Intel's `C = ~A & B`. MD5 code generator (`gen_md5x8/main.go`) used Intel semantics for Round 1/2/4, causing all F functions to be wrong. AVX2 MD5's 8 lanes silently miscomputed every block.
 
-**Fix**: swap operands in generator â†?regenerated `md5x8_amd64.s`. Added `TestMD5x8_AVX2_Parity` (AVX2 vs stdlib md5.Sum).
+**Fix**: swap operands in generator ï¿½?regenerated `md5x8_amd64.s`. Added `TestMD5x8_AVX2_Parity` (AVX2 vs stdlib md5.Sum).
 
 ### 6.4 VPGATHERDD Mask Zeroing + Go asm VSIB Bug (v0.1.4.2â€“v0.1.4.3)
 
 Two bugs in the gather load path:
-1. **Mask zeroing** â€?VPGATHERDD zeros the mask register after execution (Intel spec). Initializing the mask only once â†?only the first gather works.
-2. **VSIB encoding** â€?Go Plan 9 assembler has hardcoded base register and displacement errors for VPGATHERDD encoding.
+1. **Mask zeroing** ï¿½?VPGATHERDD zeros the mask register after execution (Intel spec). Initializing the mask only once ï¿½?only the first gather works.
+2. **VSIB encoding** ï¿½?Go Plan 9 assembler has hardcoded base register and displacement errors for VPGATHERDD encoding.
 
 **Fix**: reload mask before each gather (`VPCMPEQD` / `KXNORW`). Bypass Go asm VSIB bug entirely with raw machine code `BYTE` opcodes.
 
-### 6.5 VPTERNLOGD Operand Swap â€?AVX-512 MD5 (v0.1.4.4)
+### 6.5 VPTERNLOGD Operand Swap ï¿½?AVX-512 MD5 (v0.1.4.4)
 
 Same category as Â§6.3: Go Plan 9 swaps src1/src2 for `VPTERNLOGD`. Truth-table index is `n=(dst<<2)|(src2<<1)|src1` (not Intel's src1/src2 order). The three rounds using VPTERNLOGD in the AVX-512 core (R1, R2, R4) all had wrong immediates.
 
-**Impact**: 1GB identical-file sync took 2+ minutes â€?server (Xeon, AVX-512) generated wrong MD5 signatures, client (stdlib MD5) found zero matches â†?byte-by-byte scan of 1 billion positions.
+**Impact**: 1GB identical-file sync took 2+ minutes ï¿½?server (Xeon, AVX-512) generated wrong MD5 signatures, client (stdlib MD5) found zero matches ï¿½?byte-by-byte scan of 1 billion positions.
 
 **Fix**: recomputed all imm8 values in Go-swapped order ($0xD8/$0xAC/$0x63), regenerated `md5x16_amd64.s`. Added `TestMD5x16_AVX512_Parity`, `TestMD5x16_CoreOnly`, `TestMD5x16_GatherVerification`.
 
@@ -271,7 +271,7 @@ Compare AVX2/AVX-512 MD5 output against stdlib `md5.Sum`:
 |------|-------|
 | `TestMD5x8_AVX2_Parity` | 8-lane AVX2 MD5 vs stdlib (700-byte blocks) |
 | `TestMD5x16_AVX512_Parity` | 16-lane AVX-512 MD5 vs stdlib (2048-byte blocks) |
-| `TestMD5x16_UnevenLengths` | 16 uneven-length blocks (63â€?096 bytes) |
+| `TestMD5x16_UnevenLengths` | 16 uneven-length blocks (63ï¿½?096 bytes) |
 | `TestMD5x16_CoreOnly` | AVX-512 core + manually constructed x matrix (bypasses gather) |
 | `TestMD5x16_GatherVerification` | Verify VPGATHERDD loads correct transposed data |
 
@@ -296,9 +296,9 @@ End-to-end delta round-trip, identical files, example usage.
 | Block Size | go-rsync v6 | go-rsync v4 | rsync-AVX2 |
 |------------|:-----------:|:-----------:|:----------:|
 | 1 KB | **37.4 GB/s** | 16.8 GB/s | 43.4 GB/s |
-| 8 KB | **42.8 GB/s** | â€?| 48.3 GB/s |
+| 8 KB | **42.8 GB/s** | ï¿½?| 48.3 GB/s |
 | 64 KB | **43.7 GB/s** | 26.7 GB/s | 44.3 GB/s |
-| 1 MB | **43.6 GB/s** | 42.4 GB/s | â€?|
+| 1 MB | **43.6 GB/s** | 42.4 GB/s | ï¿½?|
 
 **AMD Ryzen 9 8940HX (Zen 4, laptop):**
 
@@ -306,13 +306,13 @@ End-to-end delta round-trip, identical files, example usage.
 |------------|:-----------:|:-------------:|:-----------:|
 | 1 KB | 55.1 GB/s | 44.8 GB/s | +23% |
 | 64 KB | **69.2 GB/s** | 51.5 GB/s | **+34%** |
-| 1 MB | 51.2 GB/s | 51.2 GB/s | â€?|
+| 1 MB | 51.2 GB/s | 51.2 GB/s | ï¿½?|
 
 **Cross-Platform Three-Tier Comparison (Ryzen 9, 64KB):**
 
 | Tier | Throughput | vs AVX2 |
 |------|:----------:|:-------:|
-| AVX2 (64B/iter) | 69.2 GB/s | â€?|
+| AVX2 (64B/iter) | 69.2 GB/s | ï¿½?|
 | SSE2 (32B/iter) | 26.1 GB/s | 2.7Ã— slower |
 | Pure Go (128B batch) | 1.9 GB/s | 36Ã— slower |
 
@@ -340,14 +340,14 @@ The SSE2 path is not a simple mechanical translation of AVX2. Key differences:
 | Size | go-rsync v6 | go-rsync v4 | rsync-AVX2 |
 |------|:---:|:---:|:---:|
 | 1 KB | **37.4 GB/s** | 16.8 GB/s | 43.4 GB/s |
-| 4 KB | â€?| 36.8 GB/s | 48.3 GB/s |
-| 16 KB | â€?| 39.2 GB/s | 49.0 GB/s |
+| 4 KB | ï¿½?| 36.8 GB/s | 48.3 GB/s |
+| 16 KB | ï¿½?| 39.2 GB/s | 49.0 GB/s |
 | 64 KB | **43.7 GB/s** | 40.7 GB/s | 44.3 GB/s |
-| 97 KB | â€?| 41.1 GB/s | 44.8 GB/s |
-| 128 KB | â€?| 41.3 GB/s | 45.1 GB/s |
-| 256 KB | â€?| 41.5 GB/s | 45.2 GB/s |
+| 97 KB | ï¿½?| 41.1 GB/s | 44.8 GB/s |
+| 128 KB | ï¿½?| 41.3 GB/s | 45.1 GB/s |
+| 256 KB | ï¿½?| 41.5 GB/s | 45.2 GB/s |
 
-> v6 narrows 1KB scenario gap vs rsync from v1's âˆ?0% to âˆ?4%. 64KB is now within 1.4% of rsync. Remaining 1KB gap comes from rsync's VPSRLD/VPSRLDQ + exit correction approach, which gets ~15% more port throughput on Xeon.
+> v6 narrows 1KB scenario gap vs rsync from v1's ï¿½?0% to ï¿½?4%. 64KB is now within 1.4% of rsync. Remaining 1KB gap comes from rsync's VPSRLD/VPSRLDQ + exit correction approach, which gets ~15% more port throughput on Xeon.
 
 ---
 
@@ -355,4 +355,4 @@ The SSE2 path is not a simple mechanical translation of AVX2. Key differences:
 
 ---
 
-> Related docs: [MD5 SIMD Reference](md5-simd.md) ¡¤ [Project README](../README.md)
+> Related docs: [MD5 SIMD Reference](md5-simd.md) ï¿½ï¿½ [Project README](../README.md)
