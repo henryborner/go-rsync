@@ -1,5 +1,5 @@
-// SSE2/SSSE3 checksum: 32B/iter, VPMADDUBSW unsigned + VPUNPCK (XMM).
-// Deferred s1 reduction, bottom-load, PREFETCHT0.
+// SSE2/SSSE3 checksum: 32B/iter, VPMADDUBSW + VPMADDWD (XMM).
+// VPADDW + VPMADDWD used for s1, VPMADDWD for s2 weighted.
 // CHAR_OFFSET post-correction in Go.
 //
 // ⚠️  Same Go Plan 9 operand swap applies: VPMADDUBSW(signed src1, unsigned src2).
@@ -18,7 +18,8 @@ TEXT ·checksum1SSE2(SB), NOSPLIT, $0-41
 
 	// ── Tables (128-bit) ──
 	LEAQ    ones_sse<>+0(SB), AX
-	MOVOU   (AX), X15               // all-1s (for VPMADDUBSW)
+	MOVOU   (AX), X15               // byte-ones (for VPMADDUBSW)
+	MOVOU   16(AX), X5              // int16-ones (for VPMADDWD)
 	LEAQ    mul_T2_sse<>+0(SB), AX
 	MOVOU   (AX), X7                // weights [32..17]
 	MOVOU   16(AX), X13             // weights [16..1]
@@ -28,7 +29,6 @@ TEXT ·checksum1SSE2(SB), NOSPLIT, $0-41
 	MOVL    (R8), DX                // DX  = init_s2
 
 	// ── Zero accumulators (X14 starts at 0, no broadcast bug) ──
-	PXOR    X5, X5                  // zero for VPUNPCK
 	PXOR    X12, X12                // Σ weighted byte sums
 	PXOR    X4, X4                  // Σ s1_before_k
 	PXOR    X14, X14                // running byte-sum (no init_s1 broadcast!)
@@ -44,28 +44,22 @@ TEXT ·checksum1SSE2(SB), NOSPLIT, $0-41
 
 loop:
 	// ═══════════════════════════════════════
-	// s1: VPHADDW horizontal pair-sum, no widen needed
+	// s1: VPADDW merge halves + VPMADDWD pair-sum (2 insns replaces VPHADDW+2×VPUNPCK+VPADDD)
 	// ═══════════════════════════════════════
 	VPMADDUBSW X15, X2, X0          // first 16B → 8 int16
 	VPMADDUBSW X15, X8, X1          // second 16B → 8 int16
-	VPHADDW X1, X0, X0              // h_add(X0) low, h_add(X1) high → 8 int16
-	VPUNPCKLWD X5, X0, X3           // widen lo 4
-	VPUNPCKHWD X5, X0, X0           // widen hi 4
-	VPADDD  X0, X3, X0              // X0 = 4×int32 delta_s1 (sum of 8 bytes each)
+	VPADDW X1, X0, X0               // merge halves → 8 int16
+	VPMADDWD X5, X0, X0             // pair-sum (int16_ones) → 4 int32 delta_s1
 
 	// s2: accumulate s1_before
 	VPADDD  X4, X14, X4
 
-	// s2: weighted
-	VPMADDUBSW X7, X2, X2         // first 16B × [32..17]
-	VPUNPCKLWD X5, X2, X3
-	VPUNPCKHWD X5, X2, X2
-	VPADDD  X2, X3, X2
+	// s2: weighted — VPMADDWD pair-sum replaces VPUNPCK+VPUNPCK+VPADDD
+	VPMADDUBSW X7, X2, X2           // first 16B × [32..17]
+	VPMADDWD X5, X2, X2             // pair-sum → 4 int32
 
-	VPMADDUBSW X13, X8, X6        // second 16B × [16..1]
-	VPUNPCKLWD X5, X6, X3
-	VPUNPCKHWD X5, X6, X6
-	VPADDD  X6, X3, X6
+	VPMADDUBSW X13, X8, X6          // second 16B × [16..1]
+	VPMADDWD X5, X6, X6             // pair-sum → 4 int32
 
 	VPADDD  X6, X2, X2
 	VPADDD  X12, X2, X12
@@ -126,10 +120,12 @@ bail:
 	MOVB    $0, ret+40(FP)
 	RET
 
-// ── All-1s table (16 bytes) ──
+// ── All-1s table (32 bytes: 16B byte-ones + 16B int16-ones) ──
 DATA ones_sse<>+0(SB)/8, $0x0101010101010101
 DATA ones_sse<>+8(SB)/8, $0x0101010101010101
-GLOBL ones_sse<>(SB), RODATA|NOPTR, $16
+DATA ones_sse<>+16(SB)/8, $0x0001000100010001
+DATA ones_sse<>+24(SB)/8, $0x0001000100010001
+GLOBL ones_sse<>(SB), RODATA|NOPTR, $32
 
 // ── Weight table for 32B window: [32,31,...,1] as LE uint64 ──
 DATA mul_T2_sse<>+0(SB)/8,  $0x191a1b1c1d1e1f20  // 32,31,30,29,28,27,26,25
