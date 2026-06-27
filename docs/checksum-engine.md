@@ -247,32 +247,31 @@ End-to-end delta round-trip, identical files, example usage.
 
 **AMD Ryzen 9 8940HX (Zen 4, laptop):**
 
-| Block Size | go-rsync v6 | v1 (baseline) | Improvement |
+| Block Size | go-rsync | v1 (baseline) | Improvement |
 |------------|:-----------:|:-------------:|:-----------:|
-| 1 KB | 55.1 GB/s | 44.8 GB/s | +23% |
-| 64 KB | 69.2 GB/s | 51.5 GB/s | +34% |
-| 1 MB | 51.2 GB/s | 51.2 GB/s | — |
+| 1 KB | 61.0 GB/s | 44.8 GB/s | +36% |
+| 64 KB | 75.6 GB/s | 51.5 GB/s | +47% |
+| 1 MB | 75.2 GB/s | 51.2 GB/s | +47% |
 
 **Three-tier comparison (Ryzen 9, 64KB):**
 
 | Tier | Throughput | vs AVX2 |
 |------|:----------:|:-------:|
-| AVX2 (64B/iter) | 69.2 GB/s | — |
-| SSE2 (32B/iter) | 26.1 GB/s | 2.7× slower |
-| Pure Go (128B batch) | 1.9 GB/s | 36× slower |
+| AVX2 (64B/iter) | 75.6 GB/s | — |
+| SSE2 (32B/iter) | 38.6 GB/s | 2.0× slower |
+| Pure Go (128B batch) | 1.9 GB/s | 40× slower |
 
 ## A. SSE2 Path
 
-Key differences from AVX2:
+SSE2 path (32B/iter via XMM registers). Go 1.25+ enables the same
+VPADDW+VPMADDWD pattern as AVX2; previous versions required VPHADDW+VPUNPCK workarounds.
 
-| Aspect | AVX2 | SSE2 | Reason |
-|--------|------|------|--------|
-| s1 reduction | VPMADDWD pair-sum | VPHADDW pair-sum | Go asm lacks XMM `VPADDW` |
-| s2 reduction | VPADDW merge + VPUNPCK | VPUNPCK per-half | No XMM `VPADDW` available |
-| Block size | 64B/iter | 32B/iter | XMM = 128-bit |
-| Loop instructions | 20 | ~22 | 2 extra VPUNPCK per s2 half |
-
-Go Plan 9 defines `APADDW` only for YMM registers; no XMM variant exists. This prevents the merge-before-widen optimization in SSE2.
+| Aspect | AVX2 | SSE2 |
+|--------|------|------|
+| s1 reduction | VPMADDWD pair-sum | VPADDW merge + VPMADDWD pair-sum |
+| s2 reduction | VPMADDWD per-half | VPMADDWD per-half |
+| Block size | 64B/iter | 32B/iter |
+| Loop instructions | 19 | 16 |
 
 ## B. Per-Size Benchmarks
 
