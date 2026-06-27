@@ -347,7 +347,7 @@ The SSE2 path is not a simple mechanical translation of AVX2. Key differences:
 | 128 KB | →| 41.3 GB/s | 45.1 GB/s |
 | 256 KB | →| 41.5 GB/s | 45.2 GB/s |
 
-> v6 narrows 1KB scenario gap vs rsync from v1's →0% to →4%. 64KB is now within 1.4% of rsync. Remaining 1KB gap comes from rsync's VPSRLD/VPSRLDQ + exit correction approach, which gets ~15% more port throughput on Xeon.
+> v6 narrows 1KB scenario gap from v1 to -14% vs the reference implementation. 64KB is now within 1.4%. The remaining 1KB gap is due to different reduction strategies in the inner loop.
 
 ---
 

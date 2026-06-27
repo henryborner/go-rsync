@@ -46,7 +46,7 @@ func computeTableSize(blockCount int) uint32 {
 	return ts
 }
 
-// CHUNK_SIZE is the maximum literal chunk size (same as rsync's 32KB).
+// CHUNK_SIZE is the maximum literal chunk size (32KB).
 // Large literals are split into CHUNK_SIZE pieces to ensure the receiver
 // never allocates more than 32KB at once (safe for low-memory servers).
 // CHUNK_SIZE 字面量分块上限，同 rsync 的 32KB。

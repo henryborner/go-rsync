@@ -79,7 +79,7 @@ loop:
 	VPADDD  Y3, Y2, Y2            // merge halves (32-bit)
 	VPADDD  Y12, Y2, Y12          // Y12 += weighted_sum
 
-	// Prefetch 6 cachelines ahead (384 bytes), same as rsync.
+	// Prefetch 6 cachelines ahead (384 bytes).
 	PREFETCHT0 384(DI)
 
 	// ═══════════════════════════════════════
