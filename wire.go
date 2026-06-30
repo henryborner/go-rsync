@@ -202,6 +202,75 @@ func DecodeInstructionsStream(r io.Reader, fn func(inst MatchResult) error) erro
 	return nil
 }
 
+// DecodeInstructionsStreamAll reads multiple batches of instructions from r,
+// calling fn for each.  Batches are prefixed with a 4-byte big-endian count;
+// a count of 0 signals end-of-stream.  This is the receiver-side counterpart
+// to the batched-send pattern used by streaming senders.
+//
+// DecodeInstructionsStreamAll 从 r 读取多个批次的指令。
+// 每批以 4 字节 count 开头，count=0 表示结束。
+// 与流式发送端的分批发送模式配对使用。
+func DecodeInstructionsStreamAll(r io.Reader, fn func(inst MatchResult) error) error {
+	for {
+		header := make([]byte, 4)
+		if _, err := io.ReadFull(r, header); err != nil {
+			return err
+		}
+		count := binary.BigEndian.Uint32(header)
+		if count == 0 {
+			return nil // end-of-stream marker
+		}
+		// Reuse DecodeInstructionsStream logic inline for the batch.
+		var buf []byte
+		for i := uint32(0); i < count; i++ {
+			flag := make([]byte, 1)
+			if _, err := io.ReadFull(r, flag); err != nil {
+				return fmt.Errorf("read batch instruction %d flag: %w", i, err)
+			}
+			if flag[0] == 0 {
+				lenBuf := make([]byte, 4)
+				if _, err := io.ReadFull(r, lenBuf); err != nil {
+					return fmt.Errorf("read batch instruction %d len: %w", i, err)
+				}
+				dataLen := int(binary.BigEndian.Uint32(lenBuf))
+				readSize := dataLen
+				if readSize > CHUNK_SIZE {
+					readSize = CHUNK_SIZE
+				}
+				if cap(buf) < readSize {
+					buf = make([]byte, readSize)
+				}
+				for dataLen > 0 {
+					n := dataLen
+					if n > CHUNK_SIZE {
+						n = CHUNK_SIZE
+					}
+					data := buf[:n]
+					if _, err := io.ReadFull(r, data); err != nil {
+						return fmt.Errorf("read batch instruction %d data: %w", i, err)
+					}
+					if err := fn(MatchResult{IsLiteral: true, Data: data, Offset: int64(i)}); err != nil {
+						return err
+					}
+					dataLen -= n
+				}
+			} else {
+				idxBuf := make([]byte, 4)
+				if _, err := io.ReadFull(r, idxBuf); err != nil {
+					return fmt.Errorf("read batch instruction %d idx: %w", i, err)
+				}
+				if err := fn(MatchResult{
+					IsLiteral: false,
+					BlockIdx:  int(binary.BigEndian.Uint32(idxBuf)),
+					Offset:    int64(i),
+				}); err != nil {
+					return err
+				}
+			}
+		}
+	}
+}
+
 func WireDecodeInstructions(r io.Reader) ([]MatchResult, error) {
 	header := make([]byte, 4)
 	if _, err := io.ReadFull(r, header); err != nil {

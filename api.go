@@ -81,3 +81,36 @@ func ApplyDeltaStream(basisFile []byte, r io.Reader, w io.Writer, blockSize int3
 		return recon.WriteInstruction(w, inst)
 	})
 }
+
+// ── Streaming sender API (low memory) ──────────────────────────────────
+
+// DeltaStream computes the delta between oldFile (in memory) and newFile
+// (streamed from r), delivering each instruction via fn as it is discovered.
+// oldFile is loaded fully (the basis); newFile is read in chunks and never
+// fully buffered.  Suitable for servers with limited RAM.
+//
+// DeltaStream 计算 oldFile 与 newFile 的流式 delta。
+// oldFile 全部加载（基础文件）；newFile 通过 r 流式读取，不占用额外内存。
+// 每发现一条指令即回调 fn。适合内存受限服务器。
+func DeltaStream(oldFile []byte, newFileR io.Reader, newFileSize int64, blockSize int32, algo string, fn func(MatchResult) error) error {
+	sig := GenerateSignature(oldFile, blockSize, algo)
+	eng := NewMatchEngine(blockSize, algo)
+	eng.LoadSignature(sig)
+	return eng.SearchReader(newFileR, newFileSize, fn)
+}
+
+// DeltaFromWireStream reads a wire-encoded signature from sigR, then streams
+// the delta of newFile (from newR) via fn.  Neither the signature blocks
+// (beyond the hash table) nor the new file are fully buffered.
+//
+// DeltaFromWireStream 从 sigR 读取 wire 格式签名，然后流式匹配 newR 中的新文件。
+// 签名块（除哈希表外）和新文件均不全量缓存，内存友好。
+func DeltaFromWireStream(sigR io.Reader, newR io.Reader, newFileSize int64, algo string, fn func(MatchResult) error) error {
+	sig, err := WireDecodeSignature(sigR)
+	if err != nil {
+		return err
+	}
+	eng := NewMatchEngine(sig.BlockSize, algo)
+	eng.LoadSignature(sig)
+	return eng.SearchReader(newR, newFileSize, fn)
+}
