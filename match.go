@@ -291,7 +291,10 @@ func (me *MatchEngine) SearchReader(r io.Reader, fileSize int64, fn func(MatchRe
 			if bufEnd < needEnd {
 				if err := me.shiftAndFill(r, buf, &bufLen, &bufBase, literalStart, fileSize, needEnd); err != nil {
 					_ = me.flushRemaining(fn, buf, bufBase, bufLen, &literalStart, fileSize)
-					return nil
+					if err == io.EOF || err == io.ErrUnexpectedEOF {
+						return nil
+					}
+					return err
 				}
 				bufEnd = bufBase + int64(bufLen)
 				if offset+blockSize64 > bufEnd {

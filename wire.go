@@ -56,6 +56,21 @@ func WireDecodeSignature(r io.Reader) (*Signature, error) {
 		FileSize:  int64(binary.BigEndian.Uint64(header[4:12])),
 	}
 	count := binary.BigEndian.Uint32(header[12:16])
+
+	// Validate header fields to catch corrupt/malicious wire data.
+	// 校验头部字段，防止损坏或恶意的 wire 数据。
+	if sig.BlockSize <= 0 {
+		return nil, fmt.Errorf("invalid block size %d / 无效块大小 %d", sig.BlockSize, sig.BlockSize)
+	}
+	if sig.FileSize < 0 {
+		return nil, fmt.Errorf("invalid file size %d / 无效文件大小 %d", sig.FileSize, sig.FileSize)
+	}
+	// count must fit in file: each block is at least 1 byte.
+	// count 必须在文件大小范围内：每块至少 1 字节。
+	if count > uint32(sig.FileSize) {
+		return nil, fmt.Errorf("block count %d exceeds file size %d / 块数 %d 超过文件大小 %d", count, sig.FileSize, count, sig.FileSize)
+	}
+
 	sig.BlockSums = make([]BlockSum, count)
 
 	for i := uint32(0); i < count; i++ {

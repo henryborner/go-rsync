@@ -160,6 +160,28 @@ func TestDeltaIdentical(t *testing.T) {
 		float64(engine.LiteralBytes)/float64(len(data))*100)
 }
 
+func TestReconstructNegativeBlockIdx(t *testing.T) {
+	// Negative block index from corrupt wire data must return an error, not panic.
+	// 负 BlockIdx（来自损坏的 wire 数据）必须返回错误而非 panic。
+	basis := make([]byte, 1024)
+	recon := NewReconstructor(basis, 512, "md5")
+
+	// Reconstruct
+	_, err := recon.Reconstruct([]MatchResult{
+		{IsLiteral: false, BlockIdx: -1},
+	})
+	if err == nil {
+		t.Fatal("expected error for negative BlockIdx in Reconstruct, got nil")
+	}
+
+	// WriteInstruction
+	var buf bytes.Buffer
+	err = recon.WriteInstruction(&buf, MatchResult{IsLiteral: false, BlockIdx: -1})
+	if err == nil {
+		t.Fatal("expected error for negative BlockIdx in WriteInstruction, got nil")
+	}
+}
+
 func BenchmarkSignature(b *testing.B) {
 	data := make([]byte, 1024*1024) // 1MB
 	rand.Read(data)

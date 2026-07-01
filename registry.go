@@ -7,11 +7,11 @@
 //
 // # Key features
 //
-//   - Tiered checksum engine: AVX2 (64B/iter, ~52 GB/s) → SSE2 (32B/iter,
-//     ~26 GB/s) → pure Go 128B batch on amd64; portable byte-by-byte on
+//   - Tiered checksum engine: AVX2 (64B/iter, ~77 GB/s) → SSE2 (32B/iter,
+//     ~39 GB/s) → pure Go 128B batch on amd64; portable byte-by-byte on
 //     other architectures.  Automatic CPU dispatch at runtime.
-//   - Pluggable strong hash: md5, sha256, xxh64 built-in.  Register your
-//     own via [Register].
+//   - Pluggable strong hash: md5, sha256, xxh64, xxh3-128 built-in.  Register
+//     your own via [Register].
 //   - Streaming I/O: generate signatures from [io.Reader], decode
 //     instructions one-at-a-time with [DecodeInstructionsStream], and
 //     reconstruct files with minimal memory.
@@ -46,8 +46,8 @@
 // # Performance (amd64, Ryzen 9 8940HX)
 //
 //	checksum1 throughput:
-//	  AVX2      ~52 GB/s
-//	  SSE2      ~26 GB/s
+//	  AVX2      ~77 GB/s
+//	  SSE2      ~39 GB/s
 //	  pure Go    ~1.9 GB/s
 //
 // See the project README for full benchmark tables.

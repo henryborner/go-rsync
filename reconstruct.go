@@ -57,6 +57,9 @@ func (rc *Reconstructor) Reconstruct(instructions []MatchResult) ([]byte, error)
 		} else {
 			// block reference: copy from basis file
 			// 块引用：从基础文件复制
+			if inst.BlockIdx < 0 {
+				return nil, fmt.Errorf("negative block index %d / 负块索引 %d", inst.BlockIdx, inst.BlockIdx)
+			}
 			start := int64(inst.BlockIdx) * int64(rc.blockSize)
 			// prefer actual block length, otherwise use blockSize truncating by file length.
 			// 优先使用实际块长，否则用 blockSize 并通过文件长度截断。
@@ -93,6 +96,9 @@ func (rc *Reconstructor) WriteInstruction(w io.Writer, inst MatchResult) error {
 	}
 	// block reference: copy from basis file
 	// 块引用：从基础文件复制
+	if inst.BlockIdx < 0 {
+		return fmt.Errorf("negative block index %d / 负块索引 %d", inst.BlockIdx, inst.BlockIdx)
+	}
 	start := int64(inst.BlockIdx) * int64(rc.blockSize)
 	blockLen := rc.blockSize
 	if rc.blockLens != nil && inst.BlockIdx < len(rc.blockLens) {
