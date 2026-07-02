@@ -1,3 +1,5 @@
+//go:build amd64
+
 // md5x8transpose — builds 16 transposed message words from contiguous buffer.
 // buf: [8][64]byte — block0_64B, block1_64B, ..., block7_64B
 // x:   [16][8]uint32 — output
