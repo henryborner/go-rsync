@@ -66,9 +66,16 @@ func WireDecodeSignature(r io.Reader) (*Signature, error) {
 		return nil, fmt.Errorf("invalid file size %d / 无效文件大小 %d", sig.FileSize, sig.FileSize)
 	}
 	// count must fit in file: each block is at least 1 byte.
-	// count 必须在文件大小范围内：每块至少 1 字节。
-	if count > uint32(sig.FileSize) {
+	// Use uint64 comparison to avoid uint32 truncation for large FileSize.
+	// count 必须在文件大小范围内（用 uint64 比较，避免大文件时 uint32 截断）。
+	if uint64(count) > uint64(sig.FileSize) {
 		return nil, fmt.Errorf("block count %d exceeds file size %d / 块数 %d 超过文件大小 %d", count, sig.FileSize, count, sig.FileSize)
+	}
+	// Hard cap: 100M blocks @ 700B = ~65GB, far beyond practical use.
+	// 硬上限：1亿块×700B≈65GB，远超实际场景。
+	const maxWireBlocks = 100_000_000
+	if count > maxWireBlocks {
+		return nil, fmt.Errorf("block count %d exceeds max %d / 块数 %d 超过上限 %d", count, maxWireBlocks, count, maxWireBlocks)
 	}
 
 	sig.BlockSums = make([]BlockSum, count)

@@ -296,3 +296,166 @@ func FuzzMD5x8Parity(t *testing.F) {
 		}
 	})
 }
+
+// ── Reconstruct bad BlockIdx fuzz (regression for negative-index panic) ─
+
+func FuzzReconstructBadBlockIdx(t *testing.F) {
+	// Seed: valid zero index (should succeed).
+	t.Add([]byte{0, 0, 0, 0}, int32(64))
+
+	t.Fuzz(func(t *testing.T, blockIdxBytes []byte, blockSize int32) {
+		if blockSize < 1 || blockSize > 128*1024 {
+			return
+		}
+		if len(blockIdxBytes) < 4 {
+			return
+		}
+		// Interpret raw bytes as int32 — can produce negative values.
+		blockIdx := int(int32(blockIdxBytes[0])<<24 |
+			int32(blockIdxBytes[1])<<16 |
+			int32(blockIdxBytes[2])<<8 |
+			int32(blockIdxBytes[3]))
+
+		basis := make([]byte, int(blockSize)*10)
+
+		recon := NewReconstructor(basis, blockSize, "md5")
+		_, err := recon.Reconstruct([]MatchResult{
+			{IsLiteral: false, BlockIdx: blockIdx},
+		})
+		if err == nil && blockIdx < 0 {
+			t.Fatalf("expected error for negative BlockIdx=%d, got nil", blockIdx)
+		}
+		// Must not panic for any input.
+	})
+}
+
+// ── WireDecodeSignature corrupt-input fuzz ──────────────────────────
+
+func FuzzWireDecodeCorrupt(t *testing.F) {
+	// Seed: valid empty signature (16-byte header, zero count).
+	seed := make([]byte, 16)
+	seed[3] = 1 // blockSize = 1 (valid, >0)
+	t.Add(seed)
+	// Seed: truncated headers.
+	t.Add(make([]byte, 8))
+	t.Add(make([]byte, 0))
+
+	t.Fuzz(func(t *testing.T, data []byte) {
+		// WireDecodeSignature must not panic on any input.
+		sig, err := WireDecodeSignature(bytes.NewReader(data))
+		if err == nil && sig != nil {
+			// If decode succeeded, fields must be self-consistent.
+			if sig.BlockSize <= 0 {
+				t.Errorf("decoded invalid blockSize=%d without error", sig.BlockSize)
+			}
+			if sig.FileSize < 0 {
+				t.Errorf("decoded negative fileSize=%d without error", sig.FileSize)
+			}
+		}
+	})
+}
+
+// ── SearchReader error propagation fuzz ─────────────────────────────
+
+type errorReader struct {
+	data   []byte
+	errAt  int // return error after this many bytes read
+	errVal error
+}
+
+func (r *errorReader) Read(p []byte) (int, error) {
+	if r.errAt <= 0 {
+		return 0, r.errVal
+	}
+	n := len(p)
+	if n > r.errAt {
+		n = r.errAt
+	}
+	if n > len(r.data) {
+		n = len(r.data)
+	}
+	copy(p, r.data[:n])
+	r.data = r.data[n:]
+	r.errAt -= n
+	if r.errAt <= 0 {
+		return n, r.errVal
+	}
+	return n, nil
+}
+
+func FuzzSearchReaderError(t *testing.F) {
+	// errType: 0=io.EOF, 1=io.ErrUnexpectedEOF, 2=io.ErrClosedPipe (real error)
+	// Seeds cover: early EOF, late EOF, real read failure.
+	seedBasis := make([]byte, 2000)
+	t.Add(seedBasis, int32(64), "md5", int16(100), int16(0))  // EOF early
+	t.Add(seedBasis, int32(64), "md5", int16(1000), int16(1)) // ErrUnexpectedEOF
+	t.Add(seedBasis, int32(64), "md5", int16(500), int16(2))  // real I/O error
+
+	t.Fuzz(func(t *testing.T, basis []byte, blockSize int32, algo string, errAfter int16, errType int16) {
+		if blockSize < 16 || blockSize > 1024 {
+			return
+		}
+		if algo != "md5" {
+			return
+		}
+		if len(basis) < int(blockSize)*3 {
+			return
+		}
+		if errAfter < 0 {
+			return
+		}
+
+		sig := GenerateSignature(basis, blockSize, algo)
+		eng := NewMatchEngine(blockSize, algo)
+		eng.LoadSignature(sig)
+
+		var errVal error
+		switch errType % 3 {
+		case 0:
+			errVal = io.EOF
+		case 1:
+			errVal = io.ErrUnexpectedEOF
+		default:
+			errVal = io.ErrClosedPipe // real I/O error (non-EOF)
+		}
+
+		fileSize := int64(len(basis))
+		r := &errorReader{
+			data:   make([]byte, fileSize),
+			errAt:  int(errAfter),
+			errVal: errVal,
+		}
+		copy(r.data, basis)
+
+		var results []MatchResult
+		err := eng.SearchReader(r, fileSize, func(mr MatchResult) error {
+			cp := mr
+			if mr.IsLiteral {
+				cp.Data = make([]byte, len(mr.Data))
+				copy(cp.Data, mr.Data)
+			}
+			results = append(results, cp)
+			return nil
+		})
+
+		// For real I/O errors (non-EOF), the error must propagate.
+		if errVal != io.EOF && errVal != io.ErrUnexpectedEOF {
+			if err == nil {
+				t.Fatalf("expected error for errType=%d errVal=%v, got nil", errType, errVal)
+			}
+			return
+		}
+
+		// For EOF variants: no fatal error, and results must not panic on reconstruct.
+		if err != nil && err != io.EOF && err != io.ErrUnexpectedEOF {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		if len(results) > 0 {
+			recon := NewReconstructor(basis, blockSize, algo)
+			if _, recErr := recon.Reconstruct(results); recErr != nil {
+				// Partial reconstruction may fail — just don't panic.
+			}
+		}
+	})
+}
