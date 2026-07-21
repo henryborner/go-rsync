@@ -12,7 +12,6 @@ Built to power [Shuttle](https://github.com/henryborner/shuttle), my own Windows
 
 - **8-way AVX2 MD5** — 8 blocks hashed in parallel via AVX2 assembly (YMM), VPGATHERDD gather load + transpose.
 - **16-way AVX-512 MD5** — 16 blocks in parallel (ZMM), blockSize ≥ 2KB.
-- **8-way AVX2 SHA-256** — same SIMD approach as MD5, for integrity-critical workloads.
 - **3-tier checksum engine** — AVX2 (64B/iter) → SSE2 (32B/iter) → pure Go 128B batch. Auto-detects CPU at runtime.
 - **Pluggable strong hash** — md5, sha256, xxh64, xxh3-128 built-in. Register your own with `FastSum` support.
 - **Binary wire protocol** — compact big-endian encoding, ready for SSH pipes.
@@ -126,9 +125,6 @@ go test -bench='BenchmarkSignature$|BenchmarkMD5x8_Bulk|BenchmarkChecksum1' -ben
 | `md5x16_amd64.s` | **Generated** — AVX-512 MD5 core (16-way, ≥2KB blocks) |
 | `md5x16_amd64.go` | Go-side glue for AVX-512 path |
 | `md5x16_gather_amd64.s` | ZMM VPGATHERDD load+transpose (k-mask reloaded per gather) |
-| `sha256x8_amd64.s` | **Generated** — AVX2 SHA-256 core (8-way) |
-| `sha256x8_amd64.go` | Go-side glue for SHA-256 8-way |
-| `sha256x8_common.go` | Shared SHA-256 constants |
 | `registry_stdlib.go` | Built-in hash constructors + `FastSum` implementations |
 | `md5x8_test.go` | Tests: 8-way + 16-way MD5 parity, gather verification |
 | `md5x8_rand_test.go` | Randomized MD5 parity (100 random-length blocks) |
@@ -136,7 +132,6 @@ go test -bench='BenchmarkSignature$|BenchmarkMD5x8_Bulk|BenchmarkChecksum1' -ben
 | `fuzz_test.go` | Fuzz tests: roundtrip, wire encode/decode, checksum parity |
 | `gen_md5x8/main.go` | Code generator for `md5x8_amd64.s` |
 | `gen_md5x16/main.go` | Code generator for `md5x16_amd64.s` |
-| `gen_sha256x8/main.go` | Code generator for `sha256x8_amd64.s` |
 | `docs/checksum-engine.md` | Checksum engine: algorithm, loop structure, conventions, optimization history, SSE2 appendix |
 | `docs/md5-simd.md` | MD5 SIMD reference: architecture, techniques, safety checklist |
 
