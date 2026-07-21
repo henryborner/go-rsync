@@ -23,6 +23,55 @@ func sha256x8core(x *[16][8]uint32, state *[8][8]uint32, wbuf *[16][8]uint32, sa
 	sha256x8coreASM(x, state, wbuf, saved)
 }
 
+// sha256x8corePureGo is a pure Go 8-way SHA-256 core used for testing.
+func sha256x8corePureGo(x *[16][8]uint32, state *[8][8]uint32, wbuf *[16][8]uint32, saved *[8][8]uint32) {
+	*saved = *state
+
+	var w [64][8]uint32
+	for i := 0; i < 16; i++ {
+		for lane := 0; lane < 8; lane++ {
+			w[i][lane] = x[i][lane]
+		}
+	}
+	for i := 16; i < 64; i++ {
+		for lane := 0; lane < 8; lane++ {
+			s0 := rotr32(w[i-15][lane], 7) ^ rotr32(w[i-15][lane], 18) ^ (w[i-15][lane] >> 3)
+			s1 := rotr32(w[i-2][lane], 17) ^ rotr32(w[i-2][lane], 19) ^ (w[i-2][lane] >> 10)
+			w[i][lane] = w[i-16][lane] + s0 + w[i-7][lane] + s1
+		}
+	}
+
+	for i := 0; i < 64; i++ {
+		for lane := 0; lane < 8; lane++ {
+			a, b, c, d, e, f, g, h :=
+				state[0][lane], state[1][lane], state[2][lane], state[3][lane],
+				state[4][lane], state[5][lane], state[6][lane], state[7][lane]
+
+			S1 := rotr32(e, 6) ^ rotr32(e, 11) ^ rotr32(e, 25)
+			ch := (e & f) ^ (^e & g)
+			t1 := h + S1 + ch + sha256K[i] + w[i][lane]
+			S0 := rotr32(a, 2) ^ rotr32(a, 13) ^ rotr32(a, 22)
+			maj := (a & b) ^ (a & c) ^ (b & c)
+			t2 := S0 + maj
+
+			state[0][lane] = t1 + t2
+			state[1][lane] = a
+			state[2][lane] = b
+			state[3][lane] = c
+			state[4][lane] = d + t1
+			state[5][lane] = e
+			state[6][lane] = f
+			state[7][lane] = g
+		}
+	}
+
+	for i := 0; i < 8; i++ {
+		for lane := 0; lane < 8; lane++ {
+			state[i][lane] += saved[i][lane]
+		}
+	}
+}
+
 func bitswap32(x uint32) uint32 {
 	return (x>>24)&0xff | (x>>8)&0xff00 | (x<<8)&0xff0000 | (x<<24)&0xff000000
 }
