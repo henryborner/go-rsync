@@ -43,7 +43,7 @@ func DeltaFromWire(r io.Reader, newFile []byte, algo string) ([]MatchResult, *Ma
 // ApplyDelta reconstructs newFile from basisFile and an instruction stream.
 // Wraps NewReconstructor + Reconstruct.
 //
-// ApplyDelta 根据基础文件和指令流量建新文件。
+// ApplyDelta 根据基础文件和指令流重建新文件。
 // 等同于 NewReconstructor + Reconstruct。
 func ApplyDelta(basisFile []byte, insts []MatchResult, blockSize int32, algo string) ([]byte, error) {
 	recon := NewReconstructor(basisFile, blockSize, algo)
