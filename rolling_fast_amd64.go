@@ -24,6 +24,18 @@ func Checksum1(data []byte) uint32 {
 	return (cs1 & 0xFFFF) | ((cs2 & 0xFFFF) << 16)
 }
 
+// Checksum1Components returns the raw (s1, s2) components of the rolling
+// checksum, following the same dispatch as Checksum1.  Useful for
+// cross-machine parity verification where the full 32-bit values matter
+// (the packed Checksum1 discards the upper 16 bits of each component).
+func Checksum1Components(data []byte) (s1, s2 uint32) {
+	n := len(data)
+	if n == 0 {
+		return 0, 0
+	}
+	return checksum1(data)
+}
+
 // checksum1 computes the initial rolling checksum for data.
 // Uses AVX2 assembly on supported CPUs, falls back to 128B Go batch.
 func checksum1(data []byte) (uint32, uint32) {

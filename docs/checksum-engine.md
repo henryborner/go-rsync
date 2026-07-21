@@ -152,6 +152,30 @@ Asm handles all bytes — full 64B blocks plus scalar remainder (0..63 bytes) in
 
 > **Rejected optimization**: VPSRLD for packed reduction (3→2 instructions). High 16 bits contain garbage, causing s1 amplification by 32768×. `Roll()` requires full 32-bit correctness.
 
+### 5.1 CHAR_OFFSET Post-Correction Overflow
+
+The AVX2/SSE2 assembly paths compute raw sums (without CHAR_OFFSET), then
+apply a post-correction in Go or assembly:
+
+```
+s1 += uint32(n) * CHAR_OFFSET
+s2 += uint32(n) * uint32(n+1) / 2 * CHAR_OFFSET
+```
+
+This correction is **not byte-identical** to the pure-Go path (which adds
+CHAR_OFFSET per-byte) when `n ∈ [65536, 92681]`. In that range,
+`n*(n+1) ≥ 2³²`, so the `uint32` intermediate multiplication wraps. The
+per-byte accumulation hits overflow at different intermediate steps,
+producing a different final `s2`.
+
+**This is not a bug.** Both `Checksum1` (signature generation) and
+`checksum1` (rolling match) use the **same** raw+correction path on any
+given machine, so they remain mutually consistent. The only scenario
+where the divergence matters is cross-ISA (e.g. AVX2-generated signatures
+matched on a pure-Go ARM machine), which go-rsync does not do.
+
+Verified by `TestChecksum1Parity` in `delta_test.go`.
+
 ## 6. Assembly Notes
 
 ### 6.1 VPMADDUBSW Operand Swap

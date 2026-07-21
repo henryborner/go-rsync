@@ -4,22 +4,22 @@
 [![Go](https://img.shields.io/badge/Go-1.21+-blue)](https://go.dev)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
-**Go implementation of the rsync delta-transfer algorithm** — with AVX2/AVX-512 accelerated MD5 (8-way + 16-way SIMD). Rolling checksum matching, block signature generation, file reconstruction, and a binary wire protocol. Batteries included.
+**Go implementation of the rsync delta-transfer algorithm** — with AVX2/AVX-512 accelerated MD5 (8-way + 16-way SIMD). Rolling checksum matching, block signature generation, file reconstruction, and a binary wire protocol.
 
-Used in production by [Shuttle](https://github.com/henryborner/shuttle), a Windows-native file sync tool.
+Built to power [Shuttle](https://github.com/henryborner/shuttle), my own Windows-native file sync tool — this library was extracted from Shuttle and is its core delta-transfer engine.
 
-## ✨ Features
+## Features
 
-- **🧬 8-way AVX2 MD5** — 8 blocks hashed in parallel via AVX2 assembly (YMM), VPGATHERDD gather load + transpose.
-- **🔥 16-way AVX-512 MD5** — 16 blocks in parallel (ZMM), blockSize ≥ 2KB.
-- **🔐 8-way AVX2 SHA-256** — same SIMD approach as MD5, for integrity-critical workloads.
-- **⚡ 3-tier checksum engine** — AVX2 (64B/iter) → SSE2 (32B/iter) → pure Go 128B batch. Auto-detects CPU at runtime.
-- **🔌 Pluggable strong hash** — md5, sha256, xxh64, xxh3-128 built-in. Register your own with `FastSum` support.
-- **📡 Binary wire protocol** — compact big-endian encoding, ready for SSH pipes.
-- **💧 Streaming I/O** — `GenerateSignatureReader`, `SearchReader`, stream decode — O(blockSize) memory for multi-GB files.
-- **⚡ Parallel APIs** — `GenerateSignatureParallel` (near-linear speedup), `SearchParallel` (5-7× on 8 cores).
-- **🔗 Rolling checksum** — CHAR_OFFSET=31, uint32 natural-overflow arithmetic.
-- **🧪 Well tested** — roundtrip, fuzz, parity (AVX2 vs SSE2 vs pure Go), MD5 8-way + 16-way (AVX2 + AVX-512 vs stdlib).
+- **8-way AVX2 MD5** — 8 blocks hashed in parallel via AVX2 assembly (YMM), VPGATHERDD gather load + transpose.
+- **16-way AVX-512 MD5** — 16 blocks in parallel (ZMM), blockSize ≥ 2KB.
+- **8-way AVX2 SHA-256** — same SIMD approach as MD5, for integrity-critical workloads.
+- **3-tier checksum engine** — AVX2 (64B/iter) → SSE2 (32B/iter) → pure Go 128B batch. Auto-detects CPU at runtime.
+- **Pluggable strong hash** — md5, sha256, xxh64, xxh3-128 built-in. Register your own with `FastSum` support.
+- **Binary wire protocol** — compact big-endian encoding, ready for SSH pipes.
+- **Streaming I/O** — `GenerateSignatureReader`, `SearchReader`, stream decode — O(blockSize) memory for multi-GB files.
+- **Parallel APIs** — `GenerateSignatureParallel`, `SearchParallel` (5-7× on 8 cores).
+- **Rolling checksum** — CHAR_OFFSET=31, uint32 natural-overflow arithmetic.
+- **Well tested** — roundtrip, fuzz, parity (AVX2 vs SSE2 vs pure Go), MD5 8-way + 16-way (AVX2 + AVX-512 vs stdlib).
 
 ## 📦 Install
 
@@ -73,7 +73,7 @@ delta.ApplyDeltaStream(oldFile, conn, outputFile, blockSize, "md5")
 | `GenerateSignature` (xxh64) | ~152 µs | 6.57 GB/s |
 | `GenerateSignature` (xxh3) | ~231 µs | 4.33 GB/s |
 | `GenerateSignature` (sha256) | ~617 µs | 1.62 GB/s |
-| `GenerateSignatureParallel` (100MB, 32-thread) | ~2.63 ms | **39.9 GB/s** 🔥 |
+| `GenerateSignatureParallel` (100MB, 32-thread) | ~2.63 ms | **39.9 GB/s** |
 
 **Intel Xeon Platinum @ 2.5GHz, AVX-512 enabled:**
 
@@ -81,7 +81,7 @@ delta.ApplyDeltaStream(oldFile, conn, outputFile, blockSize, "md5")
 |-----------|------|------------|
 | `MD5x8_Bulk` (AVX2 8-way, 32KB) | 11.5 µs | **2.84 GB/s** |
 | `MD5x8Core_Bulk` (AVX2 raw, 1000×64B×8) | 145 µs | 3.54 GB/s |
-| `MD5x16Core_Bulk` (AVX-512 raw, 1000×64B×16) | 94 µs | **10.86 GB/s** 🔥 |
+| `MD5x16Core_Bulk` (AVX-512 raw, 1000×64B×16) | 94 µs | **10.86 GB/s** |
 | `SignatureReader/10MB_32KB` | 2.88 ms | 3.64 GB/s |
 
 **Checksum1 (rolling weak checksum) throughput:**

@@ -19,3 +19,8 @@ func Checksum1(data []byte) uint32 {
 	s1, s2 := checksum1(data)
 	return (s1 & 0xFFFF) | ((s2 & 0xFFFF) << 16)
 }
+
+// Checksum1Components returns the raw (s1, s2) components.
+func Checksum1Components(data []byte) (s1, s2 uint32) {
+	return checksum1(data)
+}
