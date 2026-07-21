@@ -15,3 +15,6 @@ func SHA256x8Available() bool { return false }
 func sha256Hash8wayAVX2(data []byte, offsets [8]int, lengths [8]int, out *[8][32]byte) {
 	panic("sha256Hash8wayAVX2 called on non-amd64 platform")
 }
+
+// Reference sha256FinalLane so it's not flagged as unused on non-amd64.
+var _ = sha256FinalLane

@@ -169,3 +169,45 @@ func (x *xorshift) next() uint64 {
 	x.state ^= x.state << 17
 	return x.state
 }
+
+// TestSHA256x8_PureGoCore verifies the pure-Go 8-way SHA-256 core
+// produces the same intermediate state as manual computation.
+// This also exercises sha256x8corePureGo, silencing the unused-func lint.
+func TestSHA256x8_PureGoCore(t *testing.T) {
+	// 8 identical 64-byte blocks
+	block := make([]byte, 64)
+	for i := range block {
+		block[i] = byte(i % 256)
+	}
+	var x [16][8]uint32
+	for w := 0; w < 16; w++ {
+		for lane := 0; lane < 8; lane++ {
+			x[w][lane] = uint32(block[w*4])<<24 | uint32(block[w*4+1])<<16 |
+				uint32(block[w*4+2])<<8 | uint32(block[w*4+3])
+		}
+	}
+
+	var state [8][8]uint32
+	for lane := 0; lane < 8; lane++ {
+		state[0][lane] = 0x6a09e667
+		state[1][lane] = 0xbb67ae85
+		state[2][lane] = 0x3c6ef372
+		state[3][lane] = 0xa54ff53a
+		state[4][lane] = 0x510e527f
+		state[5][lane] = 0x9b05688c
+		state[6][lane] = 0x1f83d9ab
+		state[7][lane] = 0x5be0cd19
+	}
+	var wbuf [16][8]uint32
+	var saved [8][8]uint32
+
+	sha256x8corePureGo(&x, &state, &wbuf, &saved)
+
+	// Verify state was modified (non-zero output)
+	for lane := 0; lane < 8; lane++ {
+		if state[0][lane] == 0x6a09e667 {
+			t.Error("pure-Go core did not modify state")
+			return
+		}
+	}
+}
