@@ -160,6 +160,39 @@ func TestDeltaIdentical(t *testing.T) {
 		float64(engine.LiteralBytes)/float64(len(data))*100)
 }
 
+// TestDeltaIdenticalZeroLiteral verifies that matching a file against
+// itself produces zero literal bytes (100% block match).  This catches
+// the partial-last-block bug where the final incomplete block was never
+// checked against the signature.
+func TestDeltaIdenticalZeroLiteral(t *testing.T) {
+	// Sizes that produce a non-zero remainder with CalculateBlockSize:
+	// blockSize=700 for files <= 490KB.
+	sizes := []int{
+		700,          // exactly 1 block
+		701,          // 1 full + 1 byte tail
+		1400,         // exactly 2 blocks
+		3367,         // 4 full + 567 tail (the original bug case)
+		10000,        // 14 full + 200 tail
+		50 * 1024,    // ~73 full + partial tail
+		490 * 1024,   // max file size for blockSize=700
+	}
+	for _, sz := range sizes {
+		data := make([]byte, sz)
+		rand.Read(data)
+		blockSize := CalculateBlockSize(int64(sz))
+
+		sig := GenerateSignature(data, blockSize, "md5")
+		eng := NewMatchEngine(blockSize, "md5")
+		eng.LoadSignature(sig)
+		_ = eng.Search(data)
+
+		if eng.LiteralBytes > 0 {
+			t.Errorf("size=%d blockSize=%d: LiteralBytes=%d, expected 0 (identical file should 100%% match)",
+				sz, blockSize, eng.LiteralBytes)
+		}
+	}
+}
+
 func TestReconstructNegativeBlockIdx(t *testing.T) {
 	// Negative block index from corrupt wire data must return an error, not panic.
 	// 负 BlockIdx（来自损坏的 wire 数据）必须返回错误而非 panic。

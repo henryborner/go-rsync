@@ -214,7 +214,41 @@ func (me *MatchEngine) Search(data []byte) []MatchResult {
 		}
 	}
 
-	// remaining literal data / 剩余文字数据
+	// remaining literal data — but first check if trailing bytes match
+	// a partial last block from the signature.
+	// 剩余文字数据 — 先检查尾部是否匹配签名中的末不完整块。
+	if lastMatch < int64(len(data)) {
+		tail := data[lastMatch:]
+		// Try to match tail against the last block of each signature block.
+		// The last block's offset = blockIdx * blockSize.
+		for i := len(me.checksums) - 1; i >= 0; i-- {
+			bs := me.checksums[i]
+			blockStart := int64(bs.Index) * int64(me.blockSize)
+			if blockStart != lastMatch {
+				continue
+			}
+			if int64(bs.Length) != int64(len(tail)) {
+				continue
+			}
+			if Checksum1(tail) != bs.Sum1 {
+				continue
+			}
+			if !bytes.Equal(me.computeStrong(tail), bs.Sum2) {
+				continue
+			}
+			// Matched! Emit block reference instead of literal.
+			results = append(results, MatchResult{
+				IsLiteral: false,
+				BlockIdx:  bs.Index,
+				Offset:    lastMatch,
+			})
+			me.Matches++
+			lastMatch += int64(bs.Length)
+			break
+		}
+	}
+
+	// Emit any remaining unmatched bytes as literal.
 	if lastMatch < int64(len(data)) {
 		results = me.emitLiterals(results, data[lastMatch:], lastMatch)
 	}
@@ -396,6 +430,37 @@ func (me *MatchEngine) SearchReader(r io.Reader, fileSize int64, fn func(MatchRe
 				rs.Roll(buf[offIdx], buf[nextOff], me.blockSize)
 			}
 			offset++
+		}
+	}
+
+	// Try to match trailing bytes against a partial last block from the signature.
+	// 检查尾部未匹配字节是否对应签名中的末不完整块。
+	if literalStart < fileSize {
+		tailLen := fileSize - literalStart
+		for i := len(me.checksums) - 1; i >= 0; i-- {
+			bs := me.checksums[i]
+			blockStart := int64(bs.Index) * int64(me.blockSize)
+			if blockStart != literalStart || int64(bs.Length) != tailLen {
+				continue
+			}
+			// Ensure buffer covers the tail.
+			if bufBase+int64(bufLen) < literalStart+tailLen {
+				break
+			}
+			tail := buf[literalStart-bufBase : literalStart-bufBase+tailLen]
+			if Checksum1(tail) != bs.Sum1 {
+				continue
+			}
+			if !bytes.Equal(me.computeStrong(tail), bs.Sum2) {
+				continue
+			}
+			// Matched — emit as block reference.
+			me.Matches++
+			if err := fn(MatchResult{IsLiteral: false, BlockIdx: bs.Index, Offset: literalStart}); err != nil {
+				return err
+			}
+			literalStart += tailLen
+			break
 		}
 	}
 
