@@ -1,19 +1,19 @@
 // AVX2 checksum: 64B/iter, VPMADDWD pair-sum, deferred reduction.
 // CHAR_OFFSET post-correction in Go.
 //
-// 鈿狅笍  IMPORTANT 鈥?Go Plan 9 asm operand swap:
+// ⚠️  IMPORTANT — Go Plan 9 asm operand swap:
 //   Intel manual:  VPMADDUBSW(unsigned src1,  signed src2)
-//   Go Plan 9 asm: VPMADDUBSW( signed src1, unsigned src2)  鈫?SWAPPED!
+//   Go Plan 9 asm: VPMADDUBSW( signed src1, unsigned src2)  ← SWAPPED!
 //   Our usage:     VPMADDUBSW Y_ones(+1 signed), Y_data(unsigned), Y_dst
-//   鈫?data bytes treated as unsigned (0..255), ones as signed +1. 鉁?
+//   → data bytes treated as unsigned (0..255), ones as signed +1. ✅
 //   Do NOT swap the operands or 0xFF will be misinterpreted as -1.
 //
-//   This is verified by parity tests: 64 bytes of 0xFF 鈫?s1=16320 (correct).
+//   This is verified by parity tests: 64 bytes of 0xFF → s1=16320 (correct).
 
 #include "textflag.h"
 
 // func checksum1AVX2(data []byte, s1, s2 *uint32) bool
-TEXT 路checksum1AVX2(SB), NOSPLIT, $0-41
+TEXT ·checksum1AVX2(SB), NOSPLIT, $0-41
 	MOVQ    data+0(FP), DI        // buf ptr
 	MOVQ    data_len+8(FP), SI    // len
 	CMPQ    SI, $64               // need at least 64 bytes
@@ -22,21 +22,21 @@ TEXT 路checksum1AVX2(SB), NOSPLIT, $0-41
 	MOVQ    s1+24(FP), CX         // *ps1
 	MOVQ    s2+32(FP), R8         // *ps2
 
-	// 鈹€鈹€ Tables (ones + int16_ones are one 64B symbol) 鈹€鈹€
+	// ── Tables (ones + int16_ones are one 64B symbol) ──
 	LEAQ    ones<>+0(SB), AX
-	VMOVDQU (AX), Y15             // byte ones (0x01 脳 32) for VPMADDUBSW
-	VMOVDQU 32(AX), Y11           // int16 ones (0x0001 脳 16) for VPMADDWD
+	VMOVDQU (AX), Y15             // byte ones (0x01 × 32) for VPMADDUBSW
+	VMOVDQU 32(AX), Y11           // int16 ones (0x0001 × 16) for VPMADDWD
 	LEAQ    mul_T2<>+0(SB), AX
 	VMOVDQU (AX), Y7              // weights [64..33]
 	VMOVDQU 32(AX), Y13           // weights [32..1]
 
-	// 鈹€鈹€ Save initial values (applied as scalars at exit) 鈹€鈹€
+	// ── Save initial values (applied as scalars at exit) ──
 	MOVL    (CX), R13             // R13 = init_s1
 	MOVL    (R8), DX              // DX  = init_s2
 
-	// 鈹€鈹€ Zero accumulators 鈹€鈹€
-	VPXOR   Y12, Y12, Y12         // 危 weighted byte sums (deferred)
-	VPXOR   Y4, Y4, Y4            // Y4 = 危 s1_before_k  (deferred s2)
+	// ── Zero accumulators ──
+	VPXOR   Y12, Y12, Y12         // Σ weighted byte sums (deferred)
+	VPXOR   Y4, Y4, Y4            // Y4 = Σ s1_before_k  (deferred s2)
 	VPXOR   Y14, Y14, Y14         // Y14 = running byte-sum (vector, no init_s1)
 
 	// Preload first 64B block
@@ -49,56 +49,56 @@ TEXT 路checksum1AVX2(SB), NOSPLIT, $0-41
 	ADDQ    $64, DI
 
 loop:
-	// 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺?
-	// s1 VPMADDUBSW first 鈥?finishes ~5c later, consumed immediately.
-	// s2 VPMADDUBSW follows 鈥?staggered port 0/5 usage.
-	// 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺?
+	// ═══════════════════════════════════════
+	// s1 VPMADDUBSW first — finishes ~5c later, consumed immediately.
+	// s2 VPMADDUBSW follows — staggered port 0/5 usage.
+	// ═══════════════════════════════════════
 
-	VPMADDUBSW Y15, Y2, Y0        // s1: first 32B 鈫?16 int16
-	VPMADDUBSW Y15, Y8, Y6        // s1: second 32B 鈫?16 int16
+	VPMADDUBSW Y15, Y2, Y0        // s1: first 32B → 16 int16
+	VPMADDUBSW Y15, Y8, Y6        // s1: second 32B → 16 int16
 	VPADDW  Y6, Y0, Y0            // s1 merge halves (16-bit)
-	VPMADDWD Y11, Y0, Y0          // s1 pair-sum 鈫?8脳int32 delta_s1
+	VPMADDWD Y11, Y0, Y0          // s1 pair-sum → 8×int32 delta_s1
 
-	// 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺?
+	// ═══════════════════════════════════════
 	// s2: s1_before (independent, port 0/1/5)
-	// 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺?
-	VPADDD  Y4, Y14, Y4           // Y4 = 危 running_s1_at_block_start
+	// ═══════════════════════════════════════
+	VPADDD  Y4, Y14, Y4           // Y4 = Σ running_s1_at_block_start
 
-	// 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺?
-	// s2 VPMADDUBSW 鈥?staggered after s1, port 0/5 now free from s1's VPMADDWD.
-	// Y2 consumed (=overwritten), Y8 consumed 鈫?Y3.
-	// 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺?
-	VPMADDUBSW Y7, Y2, Y2         // s2: first 32B 脳 weights 鈫?16 int16
-	VPMADDUBSW Y13, Y8, Y3        // s2: second 32B 脳 weights 鈫?Y3
+	// ═══════════════════════════════════════
+	// s2 VPMADDUBSW — staggered after s1, port 0/5 now free from s1's VPMADDWD.
+	// Y2 consumed (=overwritten), Y8 consumed → Y3.
+	// ═══════════════════════════════════════
+	VPMADDUBSW Y7, Y2, Y2         // s2: first 32B × weights → 16 int16
+	VPMADDUBSW Y13, Y8, Y3        // s2: second 32B × weights → Y3
 
-	// 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺?
+	// ═══════════════════════════════════════
 	// s2: VPMADDWD pair-sums (staggered after s1 VPMADDWD)
-	// 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺?
-	VPMADDWD Y11, Y2, Y2          // first half 鈫?8 int32 pair-sums
-	VPMADDWD Y11, Y3, Y3          // second half 鈫?8 int32
+	// ═══════════════════════════════════════
+	VPMADDWD Y11, Y2, Y2          // first half → 8 int32 pair-sums
+	VPMADDWD Y11, Y3, Y3          // second half → 8 int32
 	VPADDD  Y3, Y2, Y2            // merge halves (32-bit)
 	VPADDD  Y12, Y2, Y12          // Y12 += weighted_sum
 
 	// Prefetch 6 cachelines ahead (384 bytes).
 	PREFETCHT0 384(DI)
 
-	// 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺?
-	// s1: accumulate delta 鈫?running s1 (vector)
-	// 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺?
+	// ═══════════════════════════════════════
+	// s1: accumulate delta → running s1 (vector)
+	// ═══════════════════════════════════════
 	VPADDD  Y14, Y0, Y14          // running s1 += delta
 
-	// 鈹€鈹€ Load next block (check before load to avoid OOB) 鈹€鈹€
+	// ── Load next block (check before load to avoid OOB) ──
 	SUBQ    $1, SI
 	JZ      done
-	VMOVDQU 0(DI), Y2             // next first 32B 鈫?Y2
-	VMOVDQU 32(DI), Y8            // next second 32B 鈫?Y8
+	VMOVDQU 0(DI), Y2             // next first 32B → Y2
+	VMOVDQU 32(DI), Y8            // next second 32B → Y8
 	ADDQ    $64, DI
 	JMP     loop
 
 done:
-	// 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺?
-	// Exit: reduce Y14 鈫?s1,  Y4|Y12 鈫?s2
-	// 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺?
+	// ═══════════════════════════════════════
+	// Exit: reduce Y14 → s1,  Y4|Y12 → s2
+	// ═══════════════════════════════════════
 
 	// s1 = reduce(Y14)
 	VEXTRACTI128 $1, Y14, X1
@@ -110,10 +110,10 @@ done:
 	VMOVD   X14, R10
 	ADDL    R13, R10               // s1 = byte_sum + init_s1
 
-	// s2: merge 64脳Y4 + Y12 before reduction (saves one reduction pass).
+	// s2: merge 64×Y4 + Y12 before reduction (saves one reduction pass).
 	// VPSLLD scales each lane by 64; VPADDD merges weighted sums.
-	VPSLLD  $6, Y4, Y4             // Y4 = 64 脳 危 s1_before (per lane)
-	VPADDD  Y12, Y4, Y4            // Y4 = 64路危s1_before + 危weighted
+	VPSLLD  $6, Y4, Y4             // Y4 = 64 × Σ s1_before (per lane)
+	VPADDD  Y12, Y4, Y4            // Y4 = 64·Σs1_before + Σweighted
 	VEXTRACTI128 $1, Y4, X1
 	VPADDD  X1, X4, X4
 	VPSRLDQ $8, X4, X1
@@ -122,14 +122,14 @@ done:
 	VPADDD  X1, X4, X4
 	VMOVD   X4, R11
 
-	// s2 correction: N 脳 64 脳 init_s1 + init_s2
+	// s2 correction: N × 64 × init_s1 + init_s2
 	MOVL    R12, R9                // R9 = N
-	IMULL   R13, R9                // R9 = N 脳 init_s1
-	SHLL    $6, R9                 // R9 = 64 脳 N 脳 init_s1
-	ADDL    R9, R11                // s2 += 64路N路init_s1
+	IMULL   R13, R9                // R9 = N × init_s1
+	SHLL    $6, R9                 // R9 = 64 × N × init_s1
+	ADDL    R9, R11                // s2 += 64·N·init_s1
 	ADDL    DX, R11                // s2 += init_s2
 
-	// 鈺愨晲鈺?Scalar remainder (0..63 bytes) 鈺愨晲鈺?
+	// ═══ Scalar remainder (0..63 bytes) ═══
 	MOVQ    R15, AX                // AX = original_len
 	ANDQ    $63, AX                // remainder count
 	JZ      skip_rem
@@ -157,13 +157,13 @@ bail:
 // func checksum1PackedAVX2(data []byte) uint32
 // Same core as checksum1AVX2, with CHAR_OFFSET + packing in asm.
 // init_s1=0, init_s2=0 (Checksum1 always starts fresh).
-TEXT 路checksum1PackedAVX2(SB), NOSPLIT, $0-28
+TEXT ·checksum1PackedAVX2(SB), NOSPLIT, $0-28
 	MOVQ    data+0(FP), DI        // buf ptr
 	MOVQ    data_len+8(FP), SI    // len
 	CMPQ    SI, $64
 	JL      pbail
 
-	// 鈹€鈹€ Tables 鈹€鈹€
+	// ── Tables ──
 	LEAQ    ones<>+0(SB), AX
 	VMOVDQU (AX), Y15
 	VMOVDQU 32(AX), Y11
@@ -171,12 +171,12 @@ TEXT 路checksum1PackedAVX2(SB), NOSPLIT, $0-28
 	VMOVDQU (AX), Y7
 	VMOVDQU 32(AX), Y13
 
-	// 鈹€鈹€ Zero accumulators (init_s1=0, init_s2=0) 鈹€鈹€
+	// ── Zero accumulators (init_s1=0, init_s2=0) ──
 	VPXOR   Y12, Y12, Y12
 	VPXOR   Y4, Y4, Y4
 	VPXOR   Y14, Y14, Y14
 
-	// 鈹€鈹€ Preload first 64B block 鈹€鈹€
+	// ── Preload first 64B block ──
 	VMOVDQU 0(DI), Y2
 	VMOVDQU 32(DI), Y8
 	MOVQ    SI, R15               // R15 = n (for remainder + CHAR_OFFSET)
@@ -245,7 +245,7 @@ prem_loop:
 	JNZ     prem_loop
 prem_done:
 
-	// 鈺愨晲鈺?CHAR_OFFSET + packing 鈺愨晲鈺?
+	// ═══ CHAR_OFFSET + packing ═══
 	// s1 += n * 31
 	MOVL    R15, R9
 	SHLL    $5, R9
@@ -276,7 +276,7 @@ pbail:
 	MOVL    $0, ret+24(FP)
 	RET
 
-// 鈹€鈹€ Combined ones table: first 32B = byte-ones (0x01), next 32B = int16-ones (0x0001) 鈹€鈹€
+// ── Combined ones table: first 32B = byte-ones (0x01), next 32B = int16-ones (0x0001) ──
 DATA ones<>+0(SB)/8,  $0x0101010101010101
 DATA ones<>+8(SB)/8,  $0x0101010101010101
 DATA ones<>+16(SB)/8, $0x0101010101010101
@@ -287,7 +287,7 @@ DATA ones<>+48(SB)/8, $0x0001000100010001
 DATA ones<>+56(SB)/8, $0x0001000100010001
 GLOBL ones<>(SB), RODATA|NOPTR, $64
 
-// 鈹€鈹€ Byte weight table: 64 descending bytes [64,63,...,1] as LE uint64 鈹€鈹€
+// ── Byte weight table: 64 descending bytes [64,63,...,1] as LE uint64 ──
 DATA mul_T2<>+0(SB)/8,  $0x393a3b3c3d3e3f40  // 64,63,62,61,60,59,58,57
 DATA mul_T2<>+8(SB)/8,  $0x3132333435363738  // 56,55,54,53,52,51,50,49
 DATA mul_T2<>+16(SB)/8, $0x292a2b2c2d2e2f30  // 48,47,46,45,44,43,42,41
