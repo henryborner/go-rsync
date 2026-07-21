@@ -25,7 +25,7 @@ Built to power [Shuttle](https://github.com/henryborner/shuttle), my own Windows
 
 ```bash
 go get github.com/henryborner/go-rsync
-```
+```text
 
 ## 🚀 Quick start
 
@@ -50,7 +50,7 @@ func main() {
     }
     os.WriteFile("v2_reconstructed.bin", result, 0644)
 }
-```
+```text
 
 For network use, split into sender/receiver:
 
@@ -61,14 +61,14 @@ delta.WireEncodeInstructions(conn, insts)
 
 // --- Receiver side ---
 delta.ApplyDeltaStream(oldFile, conn, outputFile, blockSize, "md5")
-```
+```text
 
 ## 📊 Benchmarks
 
 **AMD Ryzen 9 8940HX (Zen 4), single-threaded, 1MB data, blockSize≈700:**
 
 | Benchmark | Time | Throughput |
-|-----------|------|------------|
+| ----------- | ------ | ------------ |
 | `GenerateSignature` (md5) | ~345 µs | **2.90 GB/s** |
 | `GenerateSignature` (xxh64) | ~152 µs | 6.57 GB/s |
 | `GenerateSignature` (xxh3) | ~231 µs | 4.33 GB/s |
@@ -78,7 +78,7 @@ delta.ApplyDeltaStream(oldFile, conn, outputFile, blockSize, "md5")
 **Intel Xeon Platinum @ 2.5GHz, AVX-512 enabled:**
 
 | Benchmark | Time | Throughput |
-|-----------|------|------------|
+| ----------- | ------ | ------------ |
 | `MD5x8_Bulk` (AVX2 8-way, 32KB) | 11.5 µs | **2.84 GB/s** |
 | `MD5x8Core_Bulk` (AVX2 raw, 1000×64B×8) | 145 µs | 3.54 GB/s |
 | `MD5x16Core_Bulk` (AVX-512 raw, 1000×64B×16) | 94 µs | **10.86 GB/s** |
@@ -87,7 +87,7 @@ delta.ApplyDeltaStream(oldFile, conn, outputFile, blockSize, "md5")
 **Checksum1 (rolling weak checksum) throughput:**
 
 | Data size | AVX2 (Ryzen) | AVX2 (Xeon) | rsync-AVX2 (Xeon) |
-|-----------|:---:|:---:|:---:|
+| ----------- | :---: | :---: | :---: |
 | 1 KB | **63 GB/s** | 37 GB/s | 43 GB/s |
 | 64 KB | **77 GB/s** | 44 GB/s | 44 GB/s |
 | 1 MB | **77 GB/s** | 44 GB/s | — |
@@ -98,12 +98,12 @@ Run on your own machine:
 
 ```bash
 go test -bench='BenchmarkSignature$|BenchmarkMD5x8_Bulk|BenchmarkChecksum1' -benchmem .
-```
+```text
 
 ## 📁 Package layout
 
 | File | Purpose |
-|------|---------|
+| ------ | --------- |
 | `match.go` | Block matching engine, signature generation |
 | `reconstruct.go` | File reconstruction from instruction stream |
 | `wire.go` | Binary wire protocol encode/decode |

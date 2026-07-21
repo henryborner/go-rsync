@@ -19,7 +19,7 @@
 ## 1. Overview
 
 | Feature | Value |
-|---------|-------|
+| --------- | ------- |
 | Data type | `uint8` (0..255) |
 | CHAR_OFFSET | 31 (`Checksum1` in asm; `checksum1` in Go layer) |
 | Return format | `Checksum1` → packed `uint32`; `checksum1` → two `uint32` scalars |
@@ -36,7 +36,7 @@
 
 Block k (0-indexed):
 
-```
+```text
 s1_before_k       =  running s1 at start of block k
 delta_s1_k        =  Σ bytes in block k               (VPMADDUBSW → VPADDW → VPMADDWD)
 weighted_sum_k    =  Σ (64−i)·byte_i in block k       (VPMADDUBSW → VPMADDWD per half)
@@ -44,15 +44,15 @@ s1_after_k        =  s1_before_k + delta_s1_k
 
 s1  =  Σ delta_s1_k                                    (Y14)
 s2  =  64 × Σ s1_before_k  +  Σ weighted_sum_k         (Y4 = Σs1_before,  Y12 = Σweighted)
-```
+```text
 
 ### 2.2 s1 Reduction
 
 VPMADDWD with an int16 all-ones constant (Y11):
 
-```
+```text
 VPMADDUBSW  →  VPADDW (merge halves)  →  VPMADDWD × int16_ones  →  8×int32 delta_s1
-```
+```text
 
 One instruction replaces VPUNPCKLWD + VPUNPCKHWD + VPADDD (3→1). Works because byte sums stay within signed int16 range (<32767).
 
@@ -96,7 +96,7 @@ loop:
     ADDQ  $64, DI
     JMP   loop
 done:
-```
+```text
 
 **Design rationale**:
 
@@ -110,10 +110,10 @@ done:
 
 Y14 tracks raw byte sums only (init_s1 not broadcast):
 
-```
+```text
 s1 = reduce(Y14) + init_s1
 s2 = 64 × [reduce(Y4) + N × init_s1] + reduce(Y12) + init_s2
-```
+```text
 
 `N` = number of 64B blocks. `init_s1` and `init_s2` read from caller pointers.
 
@@ -127,7 +127,7 @@ s1 += uint32(n) * CHAR_OFFSET
 s2 += uint32(n) * uint32(n+1) / 2 * CHAR_OFFSET
 
 // public Checksum1: CHAR_OFFSET handled in asm (checksum1PackedAVX2)
-```
+```text
 
 ### 4.3 Remainder Bytes
 
@@ -136,7 +136,7 @@ Asm handles all bytes — full 64B blocks plus scalar remainder (0..63 bytes) in
 ## 5. Optimizations
 
 | Version | Change | Instrs | Xeon 1KB | Ryzen 64KB |
-|---------|--------|:------:|:--------:|:----------:|
+| --------- | -------- | :------: | :--------: | :----------: |
 | v0 | Signed VPMADDUBSW + VPMOVSXWD + per-iter s1 reduction | 45 | — | — |
 | — | Unsigned + VPUNPCK zero-extend | 41 | — | — |
 | — | Preload low-weight table Y13 | 36 | — | — |
@@ -157,10 +157,10 @@ Asm handles all bytes — full 64B blocks plus scalar remainder (0..63 bytes) in
 The AVX2/SSE2 assembly paths compute raw sums (without CHAR_OFFSET), then
 apply a post-correction in Go or assembly:
 
-```
+```text
 s1 += uint32(n) * CHAR_OFFSET
 s2 += uint32(n) * uint32(n+1) / 2 * CHAR_OFFSET
-```
+```text
 
 This correction is **not byte-identical** to the pure-Go path (which adds
 CHAR_OFFSET per-byte) when `n ∈ [65536, 92681]`. In that range,
@@ -181,7 +181,7 @@ Verified by `TestChecksum1Parity` in `delta_test.go`.
 ### 6.1 VPMADDUBSW Operand Swap
 
 | Source | src1 role | src2 role |
-|--------|-----------|-----------|
+| -------- | ----------- | ----------- |
 | Intel manual | unsigned | signed |
 | Go Plan 9 asm | signed | unsigned |
 
@@ -192,9 +192,9 @@ Usage: `VPMADDUBSW Y15(ones=+1, signed), data(unsigned), dst` → correct unsign
 Go Plan 9 swaps src1/src2 for non-commutative SIMD instructions:
 
 | Instruction | Intel | Go Plan 9 |
-|------------|-------|-----------|
+| ------------ | ------- | ----------- |
 | `VPANDN A,B,C` | `C = ~A & B` | `C = A &^ B` |
-| `VPTERNLOGD imm,A,B,C` | n = (C<<2)\|(A<<1)\|B | n = (C<<2)\|(B<<1)\|A |
+| `VPTERNLOGD imm,A,B,C` | n = (C<<2)\ | (A<<1)\ | B | n = (C<<2)\ | (B<<1)\ | A |
 
 `VPTERNLOGD` truth-table immediates must use Go-swapped order. Using Intel-manual values produces wrong MD5 hashes. Correct Go values: R1=$0xD8, R2=$0xAC, R4=$0x63. See `gen_md5x8/main.go` and `gen_md5x16/main.go`.
 
@@ -223,7 +223,7 @@ is a YMM register:
 
 ```asm
 VPGATHERDD Y2, (R8)(Y7*2), Y1    // mask first, VSIB middle, dst last
-```
+```text
 
 (The 16-way AVX-512 form `VPGATHERDD (base)(zmm*1), K1, dst`
 puts the k-mask between the memory operand and the destination.)
@@ -263,7 +263,7 @@ dependencies.
 ## 7. Register Map
 
 | Register | Purpose | Lifetime |
-|----------|---------|----------|
+| ---------- | --------- | ---------- |
 | Y15 | all-ones table (0x01 × 32) | constant |
 | Y11 | int16 all-ones (0x0001 × 16) | constant |
 | Y7 | weight table [64..33] | constant |
@@ -288,14 +288,14 @@ dependencies.
 ### Checksum Parity (`avx2_test.go`)
 
 | Test | Data | Purpose |
-|------|------|---------|
+| ------ | ------ | --------- |
 | `TestAVX2Parity` (11 cases) | zeros, 0xFF, incremental, random | Verify AVX2 engine |
 | `TestSSE2Parity` (10 cases) | zeros, 0xFF, incremental, random | Verify SSE2 engine |
 
 ### MD5 SIMD Parity (`md5x8_test.go`)
 
 | Test | Scope |
-|------|-------|
+| ------ | ------- |
 | `TestMD5x8_AVX2_Parity` | 8-way AVX2 MD5 vs stdlib (700-byte blocks) |
 | `TestMD5x16_AVX512_Parity` | 16-way AVX-512 MD5 vs stdlib (2048-byte blocks) |
 | `TestMD5x16_UnevenLengths` | 16 mixed-size blocks (63–4096 bytes) |
@@ -315,7 +315,7 @@ End-to-end delta round-trip, identical files, example usage.
 **Intel Xeon Platinum cloud VM (2 vCPU, ~2.5 GHz):**
 
 | Block Size | go-rsync v6 | go-rsync v4 | Reference AVX2 |
-|------------|:-----------:|:-----------:|:--------------:|
+| ------------ | :-----------: | :-----------: | :--------------: |
 | 1 KB | 37.4 GB/s | 16.8 GB/s | 43.4 GB/s |
 | 8 KB | 42.8 GB/s | — | 48.3 GB/s |
 | 64 KB | 43.7 GB/s | 26.7 GB/s | 44.3 GB/s |
@@ -324,7 +324,7 @@ End-to-end delta round-trip, identical files, example usage.
 **AMD Ryzen 9 8940HX (Zen 4, laptop):**
 
 | Block Size | go-rsync | v1 (baseline) | Improvement |
-|------------|:-----------:|:-------------:|:-----------:|
+| ------------ | :-----------: | :-------------: | :-----------: |
 | 1 KB | 61.0 GB/s | 44.8 GB/s | +36% |
 | 64 KB | 75.6 GB/s | 51.5 GB/s | +47% |
 | 1 MB | 75.2 GB/s | 51.2 GB/s | +47% |
@@ -332,7 +332,7 @@ End-to-end delta round-trip, identical files, example usage.
 **Three-tier comparison (Ryzen 9, 64KB):**
 
 | Tier | Throughput | vs AVX2 |
-|------|:----------:|:-------:|
+| ------ | :----------: | :-------: |
 | AVX2 (64B/iter) | 75.6 GB/s | — |
 | SSE2 (32B/iter) | 38.6 GB/s | 2.0× slower |
 | Pure Go (128B batch) | 1.9 GB/s | 40× slower |
@@ -343,7 +343,7 @@ SSE2 path (32B/iter via XMM registers). Uses the same
 VPADDW+VPMADDWD pattern as AVX2.
 
 | Aspect | AVX2 | SSE2 |
-|--------|------|------|
+| -------- | ------ | ------ |
 | s1 reduction | VPMADDWD pair-sum | VPADDW merge + VPMADDWD pair-sum |
 | s2 reduction | VPMADDWD per-half | VPMADDWD per-half |
 | Block size | 64B/iter | 32B/iter |
@@ -354,7 +354,7 @@ VPADDW+VPMADDWD pattern as AVX2.
 Same Xeon Platinum cloud VM, data pattern `i*7%251`, full tail-byte handling. Measurement error ±3%.
 
 | Size | go-rsync v6 | go-rsync v4 | Reference AVX2 |
-|------|:---:|:---:|:---:|
+| ------ | :---: | :---: | :---: |
 | 1 KB | 37.4 GB/s | 16.8 GB/s | 43.4 GB/s |
 | 4 KB | — | 36.8 GB/s | 48.3 GB/s |
 | 16 KB | — | 39.2 GB/s | 49.0 GB/s |
