@@ -169,7 +169,7 @@ func BenchmarkMD5x8_Scalar(b *testing.B) {
 	}
 
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		for j := 0; j < 8; j++ {
 			md5.Sum(data[offsets[j] : offsets[j]+700])
 		}
@@ -188,7 +188,7 @@ func BenchmarkMD5x8_SIMD(b *testing.B) {
 	}
 
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		var out [8][16]byte
 		md5Hash8wayGo(data, offsets, lengths, &out)
 	}
@@ -209,7 +209,7 @@ func BenchmarkMD5x8_ASM(b *testing.B) {
 	}
 
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		var out [8][16]byte
 		md5Hash8wayAVX2(data, offsets, lengths, &out)
 	}
@@ -236,7 +236,7 @@ func BenchmarkMD5x8_Bulk(b *testing.B) {
 
 	b.SetBytes(8 * bytesPerBlock)
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		md5Hash8wayAVX2(data, offsets, lengths, &out)
 	}
 }
@@ -264,7 +264,7 @@ func BenchmarkMD5x8Core_Raw(b *testing.B) {
 
 	b.SetBytes(64) // one 64-byte block × 8 lanes = 512B per call
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		md5x8core(&x, &state)
 	}
 }
@@ -292,7 +292,7 @@ func BenchmarkMD5x16Core_Raw(b *testing.B) {
 
 	b.SetBytes(int64(64 * 16)) // 1024B per call (16 lanes × 64B)
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		md5x16core(&x, &state)
 	}
 }
@@ -321,7 +321,7 @@ func BenchmarkMD5x8Core_Bulk(b *testing.B) {
 	bytesPerOp := int64(N * 64 * 8) // N chunks × 64B × 8 lanes
 	b.SetBytes(bytesPerOp)
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		for j := 0; j < N; j++ {
 			md5x8core(&x, &state)
 		}
@@ -353,7 +353,7 @@ func BenchmarkMD5x16Core_Bulk(b *testing.B) {
 	bytesPerOp := int64(N * 64 * 16) // N chunks × 64B × 16 lanes
 	b.SetBytes(bytesPerOp)
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		for j := 0; j < N; j++ {
 			md5x16core(&x, &state)
 		}
@@ -373,7 +373,7 @@ func BenchmarkLoadTranspose_Scalar(b *testing.B) {
 	var x [16][8]uint32
 
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		for chunk := 0; chunk < 1000; chunk++ {
 			md5x8LoadTransposeScalar(data, &offsets, chunk, &x)
 		}

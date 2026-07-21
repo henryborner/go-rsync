@@ -14,7 +14,7 @@ func BenchmarkSignatureParallel(b *testing.B) {
 		bs := CalculateBlockSize(int64(sz))
 		b.Run(fmt.Sprintf("%dMB", sz/1024/1024), func(b *testing.B) {
 			b.SetBytes(int64(sz))
-			for i := 0; i < b.N; i++ {
+			for b.Loop() {
 				GenerateSignatureParallel(data, bs, "md5")
 			}
 		})

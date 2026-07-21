@@ -100,19 +100,19 @@ func BenchmarkAllTiers(b *testing.B) {
 
 		b.Run("SSE2/"+label, func(b *testing.B) {
 			b.SetBytes(int64(size))
-			for i := 0; i < b.N; i++ {
+			for b.Loop() {
 				rawChecksumSSE2(data)
 			}
 		})
 		b.Run("AVX2/"+label, func(b *testing.B) {
 			b.SetBytes(int64(size))
-			for i := 0; i < b.N; i++ {
+			for b.Loop() {
 				rawChecksumAVX2(data)
 			}
 		})
 		b.Run("Go/"+label, func(b *testing.B) {
 			b.SetBytes(int64(size))
-			for i := 0; i < b.N; i++ {
+			for b.Loop() {
 				rawChecksumGo(data)
 			}
 		})

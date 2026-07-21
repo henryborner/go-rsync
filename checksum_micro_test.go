@@ -25,7 +25,7 @@ func BenchmarkChecksumMicro(b *testing.B) {
 
 		b.Run("Raw/"+tag, func(b *testing.B) {
 			b.SetBytes(int64(size))
-			for i := 0; i < b.N; i++ {
+			for b.Loop() {
 				var s1, s2 uint32
 				checksum1AVX2(data, &s1, &s2)
 			}
@@ -33,7 +33,7 @@ func BenchmarkChecksumMicro(b *testing.B) {
 
 		b.Run("Full/"+tag, func(b *testing.B) {
 			b.SetBytes(int64(size))
-			for i := 0; i < b.N; i++ {
+			for b.Loop() {
 				Checksum1(data)
 			}
 		})

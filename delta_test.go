@@ -188,7 +188,7 @@ func BenchmarkSignature(b *testing.B) {
 	blockSize := CalculateBlockSize(int64(len(data)))
 
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		GenerateSignature(data, blockSize, "md5")
 	}
 }
@@ -198,7 +198,7 @@ func BenchmarkSignatureSHA256(b *testing.B) {
 	rand.Read(data)
 	blockSize := CalculateBlockSize(int64(len(data)))
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		GenerateSignature(data, blockSize, "sha256")
 	}
 }
@@ -208,7 +208,7 @@ func BenchmarkSignatureXXH64(b *testing.B) {
 	rand.Read(data)
 	blockSize := CalculateBlockSize(int64(len(data)))
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		GenerateSignature(data, blockSize, "xxh64")
 	}
 }
@@ -233,7 +233,7 @@ func BenchmarkSignatureReader(b *testing.B) {
 		b.Run(sz.name, func(b *testing.B) {
 			b.SetBytes(sz.data)
 			b.ReportAllocs()
-			for i := 0; i < b.N; i++ {
+			for b.Loop() {
 				r := bytes.NewReader(data)
 				GenerateSignatureReader(r, sz.data, sz.bs, "md5")
 			}
@@ -255,7 +255,7 @@ func BenchmarkSearch(b *testing.B) {
 	sig := GenerateSignature(basis, blockSize, "md5")
 
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		engine := NewMatchEngine(blockSize, "md5")
 		engine.LoadSignature(sig)
 		engine.Search(newFile)
@@ -269,7 +269,7 @@ func BenchmarkChecksum1(b *testing.B) {
 		rand.Read(data)
 		b.Run(fmt.Sprintf("%dKB", size/1024), func(b *testing.B) {
 			b.SetBytes(int64(size))
-			for i := 0; i < b.N; i++ {
+			for b.Loop() {
 				Checksum1(data)
 			}
 		})
@@ -547,7 +547,7 @@ func BenchmarkSearchReader(b *testing.B) {
 
 	b.ResetTimer()
 	b.ReportAllocs()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		eng := NewMatchEngine(blockSize, "md5")
 		eng.LoadSignature(sig)
 		eng.SearchReader(bytes.NewReader(newFile), int64(len(newFile)), func(MatchResult) error {
@@ -697,7 +697,7 @@ func BenchmarkSearchParallel(b *testing.B) {
 	for _, workers := range []int{1, 2, 4, 8} {
 		b.Run(fmt.Sprintf("workers=%d", workers), func(b *testing.B) {
 			b.ReportAllocs()
-			for i := 0; i < b.N; i++ {
+			for b.Loop() {
 				eng := NewMatchEngine(blockSize, "md5")
 				eng.LoadSignature(sig)
 				eng.SearchParallel(newFile, workers)

@@ -21,14 +21,7 @@ func MD5x8CoreForBench(x *[16][8]uint32, state *[4][8]uint32) {
 	md5x8core(x, state)
 }
 
-// md5x8transpose builds 16 transposed message words from contiguous buffer.
-// buf: [8][64]byte — block0, block1, ..., block7
-// x: output [16][8]uint32
-//
-//go:noescape
-func md5x8transpose(buf *[8][64]byte, x *[16][8]uint32)
-
-// md5x8TransposeFast is a register-shuffle-based replacement for md5x8transpose.
+// md5x8TransposeFast is a register-shuffle-based transpose from contiguous buffer.
 // Uses VPUNPCK instead of VPINSRD (~80 vs ~320 instructions).
 //
 //go:noescape
