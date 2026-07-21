@@ -25,6 +25,7 @@ func sha256x8core(x *[16][8]uint32, state *[8][8]uint32, wbuf *[16][8]uint32, sa
 
 // sha256x8corePureGo is a pure Go 8-way SHA-256 core used for testing.
 func sha256x8corePureGo(x *[16][8]uint32, state *[8][8]uint32, wbuf *[16][8]uint32, saved *[8][8]uint32) {
+	_ = wbuf // wbuf is for parity with sha256x8core, unused in pure Go
 	*saved = *state
 
 	var w [64][8]uint32
