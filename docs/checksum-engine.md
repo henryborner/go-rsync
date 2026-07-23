@@ -194,7 +194,7 @@ Go Plan 9 swaps src1/src2 for non-commutative SIMD instructions:
 | Instruction | Intel | Go Plan 9 |
 | ------------ | ------- | ----------- |
 | `VPANDN A,B,C` | `C = ~A & B` | `C = A &^ B` |
-| `VPTERNLOGD imm,A,B,C` | n = (C<<2)\ | (A<<1)\ | B | n = (C<<2)\ | (B<<1)\ | A |
+| `VPTERNLOGD imm,A,B,C` | n = (C<<2) \| (A<<1) \| B | n = (C<<2) \| (B<<1) \| A |
 
 `VPTERNLOGD` truth-table immediates must use Go-swapped order. Using Intel-manual values produces wrong MD5 hashes. Correct Go values: R1=$0xD8, R2=$0xAC, R4=$0x63. See `gen_md5x8/main.go` and `gen_md5x16/main.go`.
 
