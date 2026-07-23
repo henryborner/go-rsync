@@ -44,7 +44,7 @@ s1_after_k        =  s1_before_k + delta_s1_k
 
 s1  =  Σ delta_s1_k                                    (Y14)
 s2  =  64 × Σ s1_before_k  +  Σ weighted_sum_k         (Y4 = Σs1_before,  Y12 = Σweighted)
-```text
+```
 
 ### 2.2 s1 Reduction
 
@@ -52,7 +52,7 @@ VPMADDWD with an int16 all-ones constant (Y11):
 
 ```text
 VPMADDUBSW  →  VPADDW (merge halves)  →  VPMADDWD × int16_ones  →  8×int32 delta_s1
-```text
+```
 
 One instruction replaces VPUNPCKLWD + VPUNPCKHWD + VPADDD (3→1). Works because byte sums stay within signed int16 range (<32767).
 
@@ -96,7 +96,7 @@ loop:
     ADDQ  $64, DI
     JMP   loop
 done:
-```text
+```
 
 **Design rationale**:
 
@@ -113,7 +113,7 @@ Y14 tracks raw byte sums only (init_s1 not broadcast):
 ```text
 s1 = reduce(Y14) + init_s1
 s2 = 64 × [reduce(Y4) + N × init_s1] + reduce(Y12) + init_s2
-```text
+```
 
 `N` = number of 64B blocks. `init_s1` and `init_s2` read from caller pointers.
 
@@ -127,7 +127,7 @@ s1 += uint32(n) * CHAR_OFFSET
 s2 += uint32(n) * uint32(n+1) / 2 * CHAR_OFFSET
 
 // public Checksum1: CHAR_OFFSET handled in asm (checksum1PackedAVX2)
-```text
+```
 
 ### 4.3 Remainder Bytes
 
@@ -160,7 +160,7 @@ apply a post-correction in Go or assembly:
 ```text
 s1 += uint32(n) * CHAR_OFFSET
 s2 += uint32(n) * uint32(n+1) / 2 * CHAR_OFFSET
-```text
+```
 
 This correction is **not byte-identical** to the pure-Go path (which adds
 CHAR_OFFSET per-byte) when `n ∈ [65536, 92681]`. In that range,
@@ -223,7 +223,7 @@ is a YMM register:
 
 ```asm
 VPGATHERDD Y2, (R8)(Y7*2), Y1    // mask first, VSIB middle, dst last
-```text
+```
 
 (The 16-way AVX-512 form `VPGATHERDD (base)(zmm*1), K1, dst`
 puts the k-mask between the memory operand and the destination.)
