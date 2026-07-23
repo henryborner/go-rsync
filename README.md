@@ -25,7 +25,7 @@ Built to power [Shuttle](https://github.com/henryborner/shuttle), my own Windows
 
 ```bash
 go get github.com/henryborner/go-rsync
-```text
+```
 
 ## 🚀 Quick start
 
@@ -50,7 +50,7 @@ func main() {
     }
     os.WriteFile("v2_reconstructed.bin", result, 0644)
 }
-```text
+```
 
 For network use, split into sender/receiver:
 
@@ -61,7 +61,7 @@ delta.WireEncodeInstructions(conn, insts)
 
 // --- Receiver side ---
 delta.ApplyDeltaStream(oldFile, conn, outputFile, blockSize, "md5")
-```text
+```
 
 ## 📊 Benchmarks
 
@@ -98,7 +98,7 @@ Run on your own machine:
 
 ```bash
 go test -bench='BenchmarkSignature$|BenchmarkMD5x8_Bulk|BenchmarkChecksum1' -benchmem .
-```text
+```
 
 ## 📁 Package layout
 
