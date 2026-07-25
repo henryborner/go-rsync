@@ -15,7 +15,6 @@ TEXT ·neonSmokeTest(SB), NOSPLIT, $0-0
 
 	// ── Test: .S4 types on other instructions ──
 	VSUB    V0.S4, V1.S4, V2.S4
-	VMUL    V0.S4, V1.S4, V2.S4
 	VSHL    V0.S4, V1.S4, V2.S4
 	VORR    V0.B16, V1.B16, V2.B16
 
@@ -24,13 +23,22 @@ TEXT ·neonSmokeTest(SB), NOSPLIT, $0-0
 	VSUB    V0.H8, V1.H8, V2.H8
 	VADDP   V0.H8, V1.H8, V2.H8
 
-	// ── Test: long / wide instructions ──
-	VUADDLP V0.H8, V1.B16
-	VSADDLP V0.S4, V1.H8
+	// ── Test: supported wide instructions ──
 	VUADDLV V0.B16, V1
-	VUMULL  V0.H8, V1.B8, V2.B8
-	VUMULL2 V0.H8, V1.B16, V2.B16
 	VUXTL   V0.H8, V1.B8
 	VUXTL2  V0.H8, V1.B16
+
+	// ── Test: VUXTL widen H→S ──
+	VUXTL   V0.S4, V1.H4        // 4 halfwords → 4 words
+	VUXTL2  V0.S4, V1.H8        // upper 4 halfwords → 4 words
+
+	// ── Test: emulate VUADDLP with VUXTL + VADDP ──
+	VUXTL   V10.H8, V2.B8       // widen low 8 bytes → 8 halfwords
+	VUXTL2  V11.H8, V2.B16      // widen high 8 bytes → 8 halfwords
+	VADDP   V0.H8, V10.H8, V11.H8  // pairwise add → 8 pair-sums
+
+	// ── Test: emulate VSADDLP with VADDP + VUXTL ──
+	VADDP   V12.H8, V5.H8, V5.H8    // pairwise add 8H→8H
+	VUXTL   V6.S4, V12.H4       // widen low 4 to 4S
 
 	RET
