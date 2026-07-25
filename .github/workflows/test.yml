@@ -32,6 +32,27 @@ jobs:
           go test -fuzz=FuzzWireSignature -fuzztime=5s
           go test -fuzz=FuzzWireInstructions -fuzztime=5s
 
+  test-arm64:
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Test
+        run: go test -count=1 -timeout=120s ./...
+
+      - name: Fuzz (quick)
+        run: |
+          go test -fuzz=FuzzDeltaRoundTrip -fuzztime=10s
+          go test -fuzz=FuzzChecksum1Parity -fuzztime=10s
+          go test -fuzz=FuzzWireSignature -fuzztime=5s
+          go test -fuzz=FuzzWireInstructions -fuzztime=5s
+
   bench:
     runs-on: ubuntu-latest
     steps:
