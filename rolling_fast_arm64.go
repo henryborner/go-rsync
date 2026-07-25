@@ -6,6 +6,9 @@ package delta
 //go:noescape
 func checksum1NEON(data []byte, s1, s2 *uint32) bool
 
+// neonSmokeTest is a compile-only test for NEON instruction support.
+func neonSmokeTest()
+
 // Checksum1 computes a one-shot rolling checksum — ARM64 optimised path.
 func Checksum1(data []byte) uint32 {
 	n := len(data)
