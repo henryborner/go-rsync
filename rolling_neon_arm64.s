@@ -2,8 +2,8 @@
 // Simple first version — structure matches SSE2 path, no interleaving yet.
 //
 // ARM64 NEON baseline:
-//   s1: UADDLP + ADD + SADDLP (byte pair-sum → int32 lanes)
-//   s2: UMULL + ADDP + SADDLP (byte×weight → weighted pair-sum)
+//   s1: VUADDLP + VADD + VSADDLP (byte pair-sum → int32 lanes)
+//   s2: VUMULL + VADDP + VSADDLP (byte×weight → weighted pair-sum)
 //
 // No VPMADDUBSW on ARM — s2 weighted path costs 4 insns per 16B half.
 
@@ -47,39 +47,39 @@ loop:
 	// ═══════════════════════════════════════
 	// s1: byte sum → 4×int32 delta_s1
 	// ═══════════════════════════════════════
-	UADDLP.8H  V0, V2             // first 16B → 8×uint16 pair-sums
-	UADDLP.8H  V1, V3             // second 16B → 8×uint16 pair-sums
-	ADD.8H     V0, V0, V1         // merge halves → 8×uint16 (each = 4-byte sum)
-	SADDLP.4S  V0, V0             // 8×uint16 → 4×int32 delta_s1 (each = 8-byte sum)
+	VUADDLP V0.8H, V2.16B          // first 16B → 8×uint16 pair-sums
+	VUADDLP V1.8H, V3.16B          // second 16B → 8×uint16 pair-sums
+	VADD    V0.8H, V0.8H, V1.8H    // merge halves → 8×uint16 (each = 4-byte sum)
+	VSADDLP V0.4S, V0.8H           // 8×uint16 → 4×int32 delta_s1 (each = 8-byte sum)
 
 	// s2: accumulate s1_before
-	ADD.4S     V4, V4, V14
+	VADD    V4.4S, V4.4S, V14.4S
 
 	// ═══════════════════════════════════════
 	// s2 weighted: first half × weights [32..17]
 	// ═══════════════════════════════════════
-	UMULL.8H   V5, V2.B8, V18.B8   // data[0..7] × weights[32..25] → 8×uint16
-	UMULL2.8H  V6, V2.B16, V18.B16 // data[8..15] × weights[24..17] → 8×uint16
-	ADDP.8H    V5, V5, V6          // pairwise add → 8×uint16 pair-sums
-	SADDLP.4S  V5, V5              // pairwise add-long → 4×int32
+	VUMULL  V5.8H, V2.8B, V18.8B    // data[0..7] × weights[32..25] → 8×uint16
+	VUMULL2 V6.8H, V2.16B, V18.16B  // data[8..15] × weights[24..17] → 8×uint16
+	VADDP   V5.8H, V5.8H, V6.8H     // pairwise add → 8×uint16 pair-sums
+	VSADDLP V5.4S, V5.8H            // pairwise add-long → 4×int32
 
 	// ═══════════════════════════════════════
 	// s2 weighted: second half × weights [16..1]
 	// ═══════════════════════════════════════
-	UMULL.8H   V7, V3.B8, V19.B8
-	UMULL2.8H  V8, V3.B16, V19.B16
-	ADDP.8H    V7, V7, V8
-	SADDLP.4S  V7, V7
+	VUMULL  V7.8H, V3.8B, V19.8B
+	VUMULL2 V8.8H, V3.16B, V19.16B
+	VADDP   V7.8H, V7.8H, V8.8H
+	VSADDLP V7.4S, V7.8H
 
 	// Merge halves and accumulate
-	ADD.4S     V5, V5, V7
-	ADD.4S     V12, V12, V5
+	VADD    V5.4S, V5.4S, V7.4S
+	VADD    V12.4S, V12.4S, V5.4S
 
 	// Prefetch 6 cachelines ahead (384 bytes)
 	PRFM    PLDL1KEEP, 384(R0)
 
 	// s1 update: running s1 += delta_s1
-	ADD.4S     V14, V14, V0
+	VADD    V14.4S, V14.4S, V0.4S
 
 	// Next block
 	SUB     $1, R7, R7
@@ -95,28 +95,28 @@ done:
 	// ═══════════════════════════════════════
 
 	// Reduce V14 → s1
-	ADDP.4S    V0, V14, V14      // [a+b, c+d, a+b, c+d]
-	ADDP.4S    V0, V0, V0        // [a+b+c+d, ...]
-	UMOV       R8, V0.S[0]
-	ADD        R5, R8, R8        // s1 = byte_sum + init_s1
+	VADDP   V0.4S, V14.4S, V14.4S  // [a+b, c+d, a+b, c+d]
+	VADDP   V0.4S, V0.4S, V0.4S    // [a+b+c+d, ...]
+	UMOV    R8, V0.S[0]
+	ADD     R5, R8, R8              // s1 = byte_sum + init_s1
 
 	// Reduce V4 (Σ s1_before)
-	ADDP.4S    V0, V4, V4
-	ADDP.4S    V0, V0, V0
-	UMOV       R9, V0.S[0]
-	LSL        $5, R9, R9        // R9 = 32 × Σ s1_before
+	VADDP   V0.4S, V4.4S, V4.4S
+	VADDP   V0.4S, V0.4S, V0.4S
+	UMOV    R9, V0.S[0]
+	LSL     $5, R9, R9              // R9 = 32 × Σ s1_before
 
 	// s2 correction: 32 × N × init_s1
-	MULW       R12, R5, R10      // R10 = init_s1 × N (32-bit multiply)
-	LSL        $5, R10, R10      // R10 = 32 × N × init_s1
-	ADD        R10, R9, R9       // R9 = 32×(Σ s1_before + N×init_s1)
+	MULW    R12, R5, R10            // R10 = init_s1 × N (32-bit multiply)
+	LSL     $5, R10, R10            // R10 = 32 × N × init_s1
+	ADD     R10, R9, R9             // R9 = 32×(Σ s1_before + N×init_s1)
 
 	// Reduce V12 (Σ weighted)
-	ADDP.4S    V0, V12, V12
-	ADDP.4S    V0, V0, V0
-	UMOV       R10, V0.S[0]
-	ADD        R9, R10, R10      // R10 = Σ weighted + correction
-	ADD        R6, R10, R10      // R10 += init_s2
+	VADDP   V0.4S, V12.4S, V12.4S
+	VADDP   V0.4S, V0.4S, V0.4S
+	UMOV    R10, V0.S[0]
+	ADD     R9, R10, R10            // R10 = Σ weighted + correction
+	ADD     R6, R10, R10            // R10 += init_s2
 
 	MOVW       R8, (R2)          // store s1
 	MOVW       R10, (R3)         // store s2
