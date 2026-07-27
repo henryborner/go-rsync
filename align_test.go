@@ -3,6 +3,8 @@
 package delta
 
 import (
+	"crypto/rand"
+	"fmt"
 	"testing"
 )
 
@@ -66,4 +68,25 @@ func referenceChecksum1Raw(data []byte) (s1, s2 uint32) {
 		s2 += s1
 	}
 	return
+}
+
+// BenchmarkChecksum1PureGo measures the byte-by-byte Go reference.
+func BenchmarkChecksum1PureGo(b *testing.B) {
+	sizes := []int{1024, 8192, 65536, 1048576}
+	for _, size := range sizes {
+		data := make([]byte, size)
+		rand.Read(data)
+		charOffset := uint32(CHAR_OFFSET)
+		b.Run(fmt.Sprintf("%dKB", size/1024), func(b *testing.B) {
+			b.SetBytes(int64(size))
+			for b.Loop() {
+				var s1, s2 uint32
+				for _, v := range data {
+					s1 += uint32(v) + charOffset
+					s2 += s1
+				}
+				_ = (s1 & 0xFFFF) | ((s2 & 0xFFFF) << 16)
+			}
+		})
+	}
 }
