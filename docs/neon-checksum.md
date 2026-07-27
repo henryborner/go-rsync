@@ -1,7 +1,7 @@
 # ARM64 NEON Rolling Checksum
 
-> Progressive NEON optimization for the rsync rolling checksum (v1→v7).
-> WORD-encoded instructions where Go 1.26 toolchain lacks mnemonics.
+> Progressive NEON optimization for the rsync rolling checksum (v1→v9).
+> VUXTL/VMLAL use WORD (Go 1.26 asm rejects/unsupported). VADDP uses corrected mnemonic.
 > GNU as verified encodings. QEMU + ARM64 CI + Aliyun hardware tested.
 
 ## Overview
@@ -9,236 +9,197 @@
 | Feature | Value |
 |---------|-------|
 | Architecture | ARM64 NEON (128-bit SIMD) |
-| Current version | **v7** — VUXTL+VMLAL direct s2 accumulate, VUADDLV s1 scalar |
+| Current version | **v9** — VUXTL+VMLAL s2, VUADDLV s1, 64B unrolled |
 | Block size | 2×32B per iteration (64B unrolled) |
 | Element types | .B16 (load), .8H (widen), .4S (accumulate) |
-| WORD instructions | 16 per iteration (VUXTL×8, VMLAL×8) |
-| Mnemonic instructions | VUADDLV, VMOV, VADDP, VEOR, VLD1, ADD, CBNZ |
-| CHAR_OFFSET | Post-correction in Go layer |
-| Loop control | CBNZ (NEON clobbers NZCV flags — must avoid BEQ/BNE) |
+| WORD instructions | 24 per iter (VUXTL×8 + VMLAL×16) |
+| Mnemonic instructions | VUADDLV, VADDP (corrected order), VMOV, ADD, CBNZ |
+| CHAR_OFFSET | Post-correction in Go layer (`p = n - n%64`) |
+| Loop control | CBNZ (NEON clobbers NZCV flags) |
 
 ## Version History
 
 ARM64 CI runner (ubuntu-24.04-arm, cloud VM):
 
-| Ver | Date | 1KB MB/s | 8KB MB/s | 64KB MB/s | 1024KB MB/s | Key Feature |
+| Ver | Date | 1KB | 8KB | 64KB | 1024KB | Key Feature |
 |-----|------|:--:|:--:|:--:|:--:|------|
-| v0 | 07-27 | — | — | — | — | Pure Go 128B fallback (baseline) |
-| v1 | 07-27 | 11,962 | ~12,200 | ~12,500 | — | Initial WORD NEON, 4-lane s1+s2, 32B/iter |
-| v2 | 07-27 | 11,808 | 11,934 | 12,097 | 12,142 | 64B unrolled (2×32B) |
-| v3 | 07-27 | ~12,100 | ~12,200 | ~12,300 | 12,269 | VUADDLV scalar s1 (replaces VUADDLP+VADD+VSADDLP chain) |
-| v4 | 07-27 | ~12,200 | ~12,300 | ~12,400 | 12,587 | VUADDLV + 64B unrolling combined |
-| v5 | 07-27 | 11,962 | ~12,200 | ~12,500 | **12,949** | 2+2 VUMULL interleave + BIC mask trick |
-| v6 | 07-27 | — | — | — | 11,938 | 4 VUMULL burst → **regression** (in-order NEON stall) |
-| **v7** | **07-27** | **12,567** | **13,332** | **13,509** | **13,067** | **VUXTL+VMLAL direct accumulate (current)** |
+| v0 | 07-27 | — | — | — | — | Pure Go 128B fallback |
+| v1 | 07-27 | 11,962 | — | — | — | WORD NEON, 4-lane, 32B/iter |
+| v2 | 07-27 | 11,808 | 11,934 | 12,097 | 12,142 | 64B unrolled |
+| v3 | 07-27 | — | — | — | 12,269 | VUADDLV scalar s1 |
+| v4 | 07-27 | — | — | — | 12,587 | VUADDLV + 64B |
+| v5 | 07-27 | 11,962 | — | — | **12,949** | 2+2 VUMULL interleave |
+| v6 | 07-27 | — | — | — | 11,938 | 4 VUMULL burst → regress |
+| v7 | 07-27 | 12,567 | 13,332 | 13,509 | 13,067 | VUXTL+VMLAL (buggy weights) |
+| v8 | 07-27 | — | — | — | — | VUMULL fallback (reverted) |
+| **v9** | **07-27** | ⏳ | ⏳ | ⏳ | ⏳ | **Fixed weights + all halves + VADDP order** |
 
-### v7 vs v5 (previous best)
+> ⚠️  v1–v8 s2 was WRONG on real hardware. All passed CI because `TestChecksum1Parity`
+> compares NEON vs NEON (self-consistency), not NEON vs reference.
+> v9 is the first version with `TestNEONParityRaw` cross-validation.
 
-v7 wins on 1KB–64KB, slightly edges v5 on 1024KB (+0.9%). Peak at 64KB: **13,509 MB/s**.
+### v9 key fixes
 
-v7 eliminates the VUMULL→VADDP→VSADDLP→VADD merge chain per block. Instead,
-VMLAL directly multiplies and accumulates into V12 in a single instruction.
-The serial dependency through V12 is hidden by interleaving s1 scalar ops.
+1. **Weight table**: byte-packed (32B, 2 regs) → halfword-packed (64B, 4 regs) for VMLAL `.4H`/`.8H`
+2. **Missing halves**: V5/V6 and V24/V25 now get VMLAL (v7 only processed V0/V1 and V22/V23)
+3. **VADDP operand order**: Go 1.26 ARM64 asm maps `VADDP Vm, Vn, Vd` (see below)
+4. **Go dispatch**: `p = n - n%64` (was 32, mismatching asm `BIC $63`)
 
-### v6 regression analysis
+### Go 1.26 ARM64 SIMD operand order (critical)
 
-4 parallel VUMULL instructions saturated the NEON pipeline on in-order ARM cores.
-In-order NEON has only 1 multiply pipe — 4 back-to-back VUMULLs stall waiting
-for the pipe. v5's 2+2 interleave (VUMULL×2 → s1 work → VUMULL×2) lets the
-pipe drain between bursts. v7 avoids this entirely by using VMLAL which has
-lower pipeline pressure.
+Go ARM64 assembler uses **destination-LAST** for SIMD, but operand mapping is
+INCONSISTENT between instructions:
 
-### Real hardware (Aliyun YiTian c8y.small, 2026-07-27)
+| Instruction | Go syntax | Encoding | Meaning |
+|-------------|-----------|----------|---------|
+| VADD | `VADD Vn.T, Vm.T, Vd.T` | Rd=Rn+Rm | Vn FIRST |
+| VADDP | `VADDP Vm.T, Vn.T, Vd.T` | Rd=pair(Rn,Rm) | **Vm FIRST** (differs!) |
+| VMOV | `VMOV Vn.T, Vd.T` | Rd=Rn | src,dst |
 
-| Ver | 1024KB MB/s | Notes |
-|-----|:--:|------|
-| v5 | 10,405–10,822 | Cloud VM ≈83% of CI speed |
-| v7 | — | Not yet tested on Aliyun |
+Key rule: **VADDP and VADD have SWAPPED first-two-operand mapping.**
+Always verify mnemonic encodings with `go tool objdump` or use GNU-as-verified WORD.
 
-## Algorithm (v7)
+Probe confirmed: `VADDP V0.S4, V12.S4, V12.S4` (intended V0=reduce(V12))
+generated `addp v12, v12, v0` (V12 corrupted, V0 ignored).
+Correct: `VADDP V12.S4, V12.S4, V0.S4`.
 
-### Per-iteration decomposition (64B = 2 blocks)
+## Algorithm (v9)
 
-```
-Block 0 (bytes 0..31):
-  s1 += Σ bytes                         → VUADDLV scalar (2×)
-  s2 += 32 × s1_before_block0           → ADD shifted
-  s2 += Σ (32-i) × byte_i               → VUXTL widen + VMLAL accumulate
-
-Block 1 (bytes 32..63):
-  s1 += Σ bytes                         → VUADDLV scalar (2×)
-  s2 += 32 × s1_before_block1           → ADD shifted
-  s2 += Σ (32-i) × byte_i               → VUXTL widen + VMLAL accumulate
-```
-
-### NEON instruction mapping (v7)
+Same structure as v7: VUXTL widen → VMLAL accumulate, 64B unrolled.
 
 ```
-Per 16B half:
-  VUXTL  Vd.8H, Vn.8B       widen low 8 bytes to halfwords
-  VUXTL2 Vd.8H, Vn.16B      widen high 8 bytes to halfwords
-  VMLAL  V12.4S, Vd.4H, Vw.4H   multiply-accumulate into V12 (low half)
-  VMLAL2 V12.4S, Vd.8H, Vw.8H   multiply-accumulate into V12 (high half)
+Per 32B block (4 halves × 16 bytes each):
+  V0,V1 = VUXTL(V2)    bytes 0..15
+  V5,V6 = VUXTL(V3)    bytes 16..31
+  VMLAL V12 += V0×W0 + V1×W1 + V5×W2 + V6×W3
 
-Per 16B full vector:
-  VUADDLV Vn.B16, Vtmp       horizontal byte-sum → scalar
+Weight registers (halfword-packed, 4×.8H):
+  V16 (W0) = {32,31,30,29, 28,27,26,25}
+  V17 (W1) = {24,23,22,21, 20,19,18,17}
+  V18 (W2) = {16,15,14,13, 12,11,10,9}
+  V19 (W3) = {8,7,6,5, 4,3,2,1}
 ```
 
-Key insight: VMLAL does `V12 += Vhalfword × Vweight` in one instruction.
-This replaces the v5 chain of `VUMULL → VADDP → VSADDLP → VADD` (4 ops per half).
+ARM NEON lacks Intel's VPMADDUBSW. Each byte needs individual multiply via VMLAL.
+16 VMLAL per 64B iteration (4 halves × 2 blocks × 2 low/high).
 
-Weights table (w32_neon):
-```
-V18 = {0x20,0x1f,0x1e,...,0x11}  // weights 32..17 for low halves
-V19 = {0x10,0x0f,0x0e,...,0x01}  // weights 16..1  for high halves
-```
+## WORD Encoding Reference (v9)
 
-ARM NEON lacks Intel's VPMADDUBSW (multiply-and-pair-add in one instruction),
-so s2 needs 2 instructions per 16B half (VUXTL + VMLAL) vs Intel's 1.
-Previously v5 needed 4 (VUMULL + VADDP + VSADDLP + VADD).
+All encodings generated by GNU `aarch64-linux-gnu-as` + `objdump -d`.
 
-## WORD Encoding Reference (v7)
+### VUXTL (8 per iteration)
 
-Generated by GNU `aarch64-linux-gnu-as` and verified with `objdump -d`.
-These encodings will be replaced by mnemonics when available in the toolchain.
+| Instruction | WORD |
+|-------------|------|
+| VUXTL V0.8H, V2.8B | `$0x2F08A440` |
+| VUXTL2 V1.8H, V2.16B | `$0x6F08A441` |
+| VUXTL V5.8H, V3.8B | `$0x2F08A465` |
+| VUXTL2 V6.8H, V3.16B | `$0x6F08A466` |
+| VUXTL V22.8H, V20.8B | `$0x2F08A696` |
+| VUXTL2 V23.8H, V20.16B | `$0x6F08A697` |
+| VUXTL V24.8H, V21.8B | `$0x2F08A6B8` |
+| VUXTL2 V25.8H, V21.16B | `$0x6F08A6B9` |
 
-### Block 0 (registers V2, V3 → V0, V1, V5, V6)
+### VMLAL (16 per iteration — all accumulate into V12)
 
-| Instruction | WORD | Purpose |
-|-------------|------|---------|
-| VUXTL V0.8H, V2.8B | `$0x2F08A440` | Widen V2 low → V0 |
-| VUXTL2 V1.8H, V2.16B | `$0x6F08A441` | Widen V2 high → V1 |
-| VUXTL V5.8H, V3.8B | `$0x2F08A465` | Widen V3 low → V5 |
-| VUXTL2 V6.8H, V3.16B | `$0x6F08A466` | Widen V3 high → V6 |
-| VMLAL V12.4S, V0.4H, V18.4H | `$0x2E72800C` | V12 += V0.low × weight_low |
-| VMLAL2 V12.4S, V0.8H, V18.8H | `$0x6E72800C` | V12 += V0.high × weight_low |
-| VMLAL V12.4S, V1.4H, V19.4H | `$0x2E73802C` | V12 += V1.low × weight_high |
-| VMLAL2 V12.4S, V1.8H, V19.8H | `$0x6E73802C` | V12 += V1.high × weight_high |
+| Instruction | WORD |
+|-------------|------|
+| VMLAL V12.4S, V0.4H, V16.4H | `$0x2E70800C` |
+| VMLAL2 V12.4S, V0.8H, V16.8H | `$0x6E70800C` |
+| VMLAL V12.4S, V1.4H, V17.4H | `$0x2E71802C` |
+| VMLAL2 V12.4S, V1.8H, V17.8H | `$0x6E71802C` |
+| VMLAL V12.4S, V5.4H, V18.4H | `$0x2E7280AC` |
+| VMLAL2 V12.4S, V5.8H, V18.8H | `$0x6E7280AC` |
+| VMLAL V12.4S, V6.4H, V19.4H | `$0x2E7380CC` |
+| VMLAL2 V12.4S, V6.8H, V19.8H | `$0x6E7380CC` |
+| VMLAL V12.4S, V22.4H, V16.4H | `$0x2E7082CC` |
+| VMLAL2 V12.4S, V22.8H, V16.8H | `$0x6E7082CC` |
+| VMLAL V12.4S, V23.4H, V17.4H | `$0x2E7182EC` |
+| VMLAL2 V12.4S, V23.8H, V17.8H | `$0x6E7182EC` |
+| VMLAL V12.4S, V24.4H, V18.4H | `$0x2E72830C` |
+| VMLAL2 V12.4S, V24.8H, V18.8H | `$0x6E72830C` |
+| VMLAL V12.4S, V25.4H, V19.4H | `$0x2E73832C` |
+| VMLAL2 V12.4S, V25.8H, V19.8H | `$0x6E73832C` |
 
-### Block 1 (registers V20, V21 → V22, V23, V24, V25)
+### Weight table (halfword-packed, 64 bytes)
 
-| Instruction | WORD | Purpose |
-|-------------|------|---------|
-| VUXTL V22.8H, V20.8B | `$0x2F08A696` | Widen V20 low → V22 |
-| VUXTL2 V23.8H, V20.16B | `$0x6F08A697` | Widen V20 high → V23 |
-| VUXTL V24.8H, V21.8B | `$0x2F08A6B8` | Widen V21 low → V24 |
-| VUXTL2 V25.8H, V21.16B | `$0x6F08A6B9` | Widen V21 high → V25 |
-| VMLAL V12.4S, V22.4H, V18.4H | `$0x2E7282CC` | V12 += V22.low × weight_low |
-| VMLAL2 V12.4S, V22.8H, V18.8H | `$0x6E7282CC` | V12 += V22.high × weight_low |
-| VMLAL V12.4S, V23.4H, V19.4H | `$0x2E7382EC` | V12 += V23.low × weight_high |
-| VMLAL2 V12.4S, V23.8H, V19.8H | `$0x6E7382EC` | V12 += V23.high × weight_high |
+| Register | DATA directives | Weights |
+|----------|----------------|---------|
+| V16 (W0) | `$0x001D001E001F0020`, `$0x0019001A001B001C` | 32..25 |
+| V17 (W1) | `$0x0015001600170018`, `$0x0011001200130014` | 24..17 |
+| V18 (W2) | `$0x000D000E000F0010`, `$0x0009000A000B000C` | 16..9 |
+| V19 (W3) | `$0x0005000600070008`, `$0x0001000200030004` | 8..1 |
 
-### Exit reduction (after loop)
+### Exit reduction (mnemonic, corrected order)
 
-```
-VADDP V0.S4, V12.S4, V12.S4    // pairwise V12 → V12 (4→2 lanes)
-VADDP V0.S4, V0.S4, V0.S4      // pairwise V0 → V0  (2→1 lane)
-VMOV  V0.S[0], R4               // extract scalar
-ADD   R4, R9                    // R9 = s2 final
+```asm
+VADDP   V12.S4, V12.S4, V0.S4   // V0 = pair(V12, V12)
+VADDP   V0.S4, V0.S4, V0.S4     // V0 = pair(V0, V0) → scalar
+VMOV    V0.S[0], R4
+ADD     R4, R9                   // R9 = s2 final
 ```
 
 ## Key Implementation Notes
 
 ### CBNZ required for loop control
 
-NEON instructions (VADD, VADDP, VUADDLP, VUMULL, VMLAL, VUXTL, etc.) overwrite
-the ARM condition flags (NZCV). **Never use BEQ/BNE** after a SUB inside a NEON
-loop. Always use CBNZ/CBZ which check the register value directly.
+NEON instructions overwrite ARM condition flags (NZCV). **Never use BEQ/BNE**
+after a SUB inside a NEON loop. Always use CBNZ/CBZ (register-direct test).
 
-This bug cost 2 days + 20+ QEMU cycles to diagnose: `SUB $1, R7; BEQ done` ran
-one extra iteration, VLD1 accessed out-of-bounds memory → SIGSEGV.
+### Go 1.26 assembler support
 
-### VLD1 pair loading
+| Status | Instructions |
+|--------|-------------|
+| ✅ Mnemonic (correct) | VUADDLV, VMOV, ADD, CBNZ, VLD1, VEOR |
+| ⚠️ Mnemonic (needs corrected order) | VADDP |
+| ❌ Mnemonic rejected/unavailable | VUXTL, VUXTL2, VMLAL, VMLAL2, VUMULL, VUMULL2, VSADDLP, VMUL |
+| 🔧 Use WORD | All ❌ instructions + verify ⚠️ ones |
 
-`VLD1.P 32(R0), [V2.B16, V3.B16]` loads 32 bytes with post-increment.
-VLD1.P with non-contiguous register groups requires two separate instructions
-(ARM VLD1 mandates contiguous register lists for multi-register loads).
+Go 1.27 (2026-08) will add VUMULL/VMLAL via issue #78498.
 
 ### VMLAL serial dependency
 
-All 8 VMLAL instructions accumulate into V12. This creates a serial chain, but
-the 5-cycle latency is hidden by interleaved s1 scalar work (VUADDLV+VMOV+ADD).
-On out-of-order cores (Apple M-series, Graviton) this dependency is handled
-transparently. On in-order cores (Cortex-A53/A55, YiTian), the interleaving
-is essential.
+All 16 VMLAL accumulate into V12. 5-cycle latency hidden by interleaved s1
+scalar work (VUADDLV+VMOV+ADD). Out-of-order cores handle this transparently;
+in-order cores benefit from the s1 interleave.
 
-### Exit correction
+### Go dispatch alignment
 
-The deferred s2 formula requires: `s2 += 64 × N × init_s1` at exit.
-Implemented as `ADD R10<<5, R9` per block (32×s1), cumulative.
-
-### Go 1.26 assembler limitations
-
-The following NEON mnemonics are NOT supported in Go 1.26:
-VUADDLP, VSADDLP, VUMULL, VUMULL2, VMLAL, VMLAL2, VMUL (vector integer)
-
-Go 1.27 (targeting 2026-08) will add these via issue #78498.
-At that point all WORD encodings can be replaced with native mnemonics.
-
-**Never try to compute WORD encodings by hand.** ARM64 NEON encoding is
-complex: VUADDLP opcode=00011 (not 00010), VUMULL bit29=0 (not 1), etc.
-Always use GNU aarch64-linux-gnu-as + objdump to generate correct encodings.
-
-### QEMU local testing
-
-```powershell
-# Cross-compile
-$env:GOOS="linux"; $env:GOARCH="arm64"; go test -c -o test_neon_arm64
-
-# Run in WSL
-wsl -d Ubuntu -u root bash -c "cd /mnt/e/new_tools/go-rsync && qemu-aarch64 ./test_neon_arm64 -test.run 'Test'"
-```
-
-QEMU is ~15x slower than real hardware but catches logic bugs.
-
-## Performance (v7, CI ARM64 runner)
-
-| Data Size | Throughput | vs v5 |
-|-----------|-----------|:--:|
-| 1 KB | 12,567 MB/s | +5.1% |
-| 8 KB | 13,332 MB/s | — |
-| 64 KB | **13,509 MB/s** | +7.3% |
-| 1024 KB | 13,067 MB/s | +0.9% |
-
-Bottleneck is memory bandwidth on the CI VM, not NEON computation.
-Real hardware (Aliyun YiTian) runs ~83% of CI speed.
+`p = n - n%64` must match asm `BIC $63, R1, R7`.
+Previously `p = n - n%32` mismatched 64B unrolling → data loss for len=96,160,224...
 
 ## Lessons Learned
 
-1. **Vertical accumulation beats horizontal reduction in loops** — Paul R's
-   2012 StackOverflow answer (18x speedup) validated. Our v7 VMLAL approach
-   follows the same principle: never reduce inside the hot loop.
+1. **Go 1.26 ARM64 SIMD operand order is inconsistent** — VADD and VADDP map
+   first-two operands differently. Never assume; always verify with objdump.
 
-2. **In-order NEON has 1 multiply pipe** — v6's 4×VUMULL burst stalled.
-   Interleave multiply with independent work (s1 scalar in v5/v7).
+2. **VMLAL needs halfword-packed weights** — byte-packed table (for VUMULL)
+   gets garbled when VMLAL interprets two bytes as one halfword.
 
-3. **CBNZ, not BEQ** — NEON destroys ARM flags. This is easy to miss because
-   scalar arithmetic leaves flags intact.
+3. **NEON loop must process ALL widened halves** — v7's V5/V6 were computed
+   but never accumulated (lost 50% of s2 data per block).
 
-4. **Don't hand-compute WORD encodings** — ARM64 NEON encoding is subtle.
-   Use GNU as + objdump, or wait for Go 1.27 native mnemonics.
+4. **`TestChecksum1Parity` is not a correctness test** — it compares NEON vs
+   NEON. Cross-validation requires a pure-Go reference.
 
-5. **VMLAL > VUMULL + VPADDL + VADD** — One multiply-accumulate replaces
-   a 4-instruction merge chain. The serial dependency on V12 is hidden by
-   interleaved independent work.
+5. **CBNZ, not BEQ** — NEON destroys ARM flags.
 
-6. **Git + PowerShell = encoding hell** — `.s` files with non-ASCII content
-   get UTF-16 BOM corruption on Windows. Use edit tools, not `git checkout`.
+6. **Don't hand-compute WORD** — use GNU as + objdump.
+
+7. **PowerShell corrupts .s file encoding** — use edit tools for non-ASCII content.
 
 ## Files
 
 | File | Role |
 |------|------|
-| `rolling_neon_arm64.s` | NEON assembly v7 (VUXTL+VMLAL, 64B unrolled) |
+| `rolling_neon_arm64.s` | NEON assembly v9 (VUXTL+VMLAL, 64B unrolled) |
 | `rolling_fast_arm64.go` | Go dispatch (NEON → 128B Go fallback) |
-| `rolling_generic.go` | Generic byte-by-byte (non-amd64, non-arm64) |
+| `align_test.go` | Raw parity cross-validation (NEON vs pure-Go reference) |
 | `docs/neon-checksum.md` | This document |
 
 ## Future Work
 
-- **128B unrolling** — Process 4 blocks per iteration to reduce loop overhead
-- **VLD1 multi-register** — Load 64B in one instruction: `VLD1.P 64(R0), [V0-V3]`
+- **Go 1.27 migration** — Replace VUXTL/VMLAL WORDs with native mnemonics
+- **128B unrolling** — 4 blocks/iter to reduce loop overhead
 - **SVE/SVE2** — Scalable vectors on Graviton3+ / Neoverse V1+
-- **Go 1.27 migration** — Replace all WORDs with native mnemonics
-- **Apple M-series tuning** — Out-of-order core may benefit from different instruction scheduling
-- **15 GB/s target** — Currently at 13.5 GB/s peak; need ~11% more throughput
+- **Benchmark v9** — CI perf data pending
