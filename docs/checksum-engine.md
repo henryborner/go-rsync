@@ -365,6 +365,8 @@ Same Xeon Platinum cloud VM, data pattern `i*7%251`, full tail-byte handling. Me
 | 128 KB | — | 41.3 GB/s | 45.1 GB/s |
 | 256 KB | — | 41.5 GB/s | 45.2 GB/s |
 
+> Reference AVX2 = original rsync (C implementation compiled with SIMD checksum support).
+
 ---
 
 > Related: [MD5 SIMD Reference](md5-simd.md) | [ARM64 NEON Reference](neon-checksum.md) | [Project README](../README.md)
