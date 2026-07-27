@@ -53,6 +53,16 @@ jobs:
           go test -fuzz=FuzzWireSignature -fuzztime=5s
           go test -fuzz=FuzzWireInstructions -fuzztime=5s
 
+      - name: Benchmark (ARM64 NEON)
+        run: |
+          go test -bench=. -benchtime=300ms -count=1 ./... 2>&1 | tee bench_arm64.txt
+
+      - name: Upload ARM64 benchmark
+        uses: actions/upload-artifact@v4
+        with:
+          name: bench-arm64
+          path: bench_arm64.txt
+
   bench:
     runs-on: ubuntu-latest
     steps:
