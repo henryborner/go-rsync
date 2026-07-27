@@ -31,7 +31,7 @@ func TestNEONParityRaw(t *testing.T) {
 			var neonS1, neonS2 uint32
 			p := 0
 			if checksum1NEON(tt.data, &neonS1, &neonS2) {
-				p = len(tt.data) - len(tt.data)%128
+				p = len(tt.data) - len(tt.data)%64
 			} else {
 				// below 128B threshold, use pure Go
 				neonS1, neonS2 = 0, 0
