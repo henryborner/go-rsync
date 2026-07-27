@@ -2,11 +2,8 @@
 
 package delta
 
-// checksum1NEON is implemented in rolling_neon_arm64.s (NEON assembly, 32B/iter).
-//go:noescape
-func checksum1NEON(data []byte, s1, s2 *uint32) bool
-
 // Checksum1 computes a one-shot rolling checksum — ARM64 optimised path.
+// Uses 128B unrolled Go batch (4×32B) until NEON assembly lands (see rolling_neon_arm64.s.bak).
 func Checksum1(data []byte) uint32 {
 	n := len(data)
 	if n == 0 {
@@ -22,7 +19,7 @@ func Checksum1Components(data []byte) (s1, s2 uint32) {
 }
 
 // checksum1 computes the initial rolling sum on ARM64.
-// Dispatch: NEON assembly → 128B Go batch → scalar tail.
+// Uses 128B unrolled Go batch loop — ~5× faster than byte-by-byte.
 func checksum1(data []byte) (uint32, uint32) {
 	n := len(data)
 	if n == 0 {
@@ -30,22 +27,6 @@ func checksum1(data []byte) (uint32, uint32) {
 	}
 
 	var s1, s2 uint32
-
-	// NEON assembly (32B/iter + scalar remainder handled in Go)
-	if n >= 32 && checksum1NEON(data, &s1, &s2) {
-		// CHAR_OFFSET post-correction for NEON-processed bytes.
-		// Asm computes raw byte sums; Go adds CHAR_OFFSET.
-		p := n - n%32
-		s1 += uint32(p) * CHAR_OFFSET
-		s2 += uint32(p) * uint32(p+1) / 2 * CHAR_OFFSET
-		// Scalar remainder (< 32 bytes) with CHAR_OFFSET.
-		for i := p; i < n; i++ {
-			s1 += uint32(data[i]) + CHAR_OFFSET
-			s2 += s1
-		}
-		return s1, s2
-	}
-
 	i := 0
 
 	// 128B main loop: 4 unrolled 32B batches.
