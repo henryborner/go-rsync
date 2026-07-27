@@ -40,9 +40,7 @@ TEXT ·checksum1NEON(SB), NOSPLIT, $0-41
 	VEOR    V14.B16, V14.B16, V14.B16
 
 	// Preload first 32B
-	VLD1    (R0), [V2.B16]
-	ADD     $16, R0, R11
-	VLD1    (R11), [V3.B16]
+	VLD1    (R0), [V2.B16, V3.B16]
 
 	AND     $~31, R1, R7        // len & ~31
 	LSR     $5, R7, R7          // N = iterations = len/32
@@ -83,10 +81,7 @@ loop:
 	CBNZ    R7, load_next
 	B       done
 load_next:
-	VLD1    (R0), [V2.B16]
-	ADD     $16, R0, R11
-	VLD1    (R11), [V3.B16]
-	ADD     $32, R0
+	VLD1.P  32(R0), [V2.B16, V3.B16]
 	B       loop
 
 done:
