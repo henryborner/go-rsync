@@ -33,40 +33,40 @@ TEXT ·checksum1NEON(SB), NOSPLIT, $0-41
 loop:
 	MOVD    R8, R10              // s1_before_block0
 
-	// Fire ALL block0 VUMULL together (max latency hiding, like AVX2)
+	// Fire weighted WORDs early (long latency), overlap with s1 scalar
 	WORD    $0x2E32C045         // VUMULL  V5.8H, V2.8B, V18.8B
 	WORD    $0x6E32C046         // VUMULL2 V6.8H, V2.B16, V18.B16
-	WORD    $0x2E33C067         // VUMULL  V7.8H, V3.8B, V19.8B
-	WORD    $0x6E33C068         // VUMULL2 V8.8H, V3.B16, V19.B16
 
-	// s1 block0 (scalar — overlaps with 4 VUMULL in pipeline)
+	// s1 block 0 (scalar — runs while VUMULL in pipeline)
 	VUADDLV V2.B16, V0; VMOV V0.S[0], R4; ADD R4, R8
 	VUADDLV V3.B16, V0; VMOV V0.S[0], R4; ADD R4, R8
-	ADD     R10<<5, R9, R9
+	ADD     R10<<5, R9, R9      // s2 += 32*s1_before_block0
 
 	MOVD    R8, R11              // s1_before_block1
 
-	// Fire ALL block1 VUMULL together
+	// Fire weighted WORDs for block 1 (overlap with s1)
 	WORD    $0x2E32C298         // VUMULL  V24.8H, V20.8B, V18.8B
 	WORD    $0x6E32C299         // VUMULL2 V25.8H, V20.B16, V18.B16
-	WORD    $0x2E33C2BA         // VUMULL  V26.8H, V21.8B, V19.8B
-	WORD    $0x6E33C2BB         // VUMULL2 V27.8H, V21.B16, V19.B16
 
-	// s1 block1
+	// s1 block 1
 	VUADDLV V20.B16, V0; VMOV V0.S[0], R4; ADD R4, R8
 	VUADDLV V21.B16, V0; VMOV V0.S[0], R4; ADD R4, R8
 	ADD     R11<<5, R9, R9
 
-	// Block0: VADDP + VSADDLP (VUMULL results ready)
+	// Finish weighted block 0 (VUMULL results ready)
 	VADDP   V5.H8, V5.H8, V6.H8
 	WORD    $0x4E6028A5         // VSADDLP V5.4S, V5.H8
+	WORD    $0x2E33C067         // VUMULL  V7.8H, V3.8B, V19.8B
+	WORD    $0x6E33C068         // VUMULL2 V8.8H, V3.B16, V19.B16
 	VADDP   V7.H8, V7.H8, V8.H8
 	WORD    $0x4E6028E7         // VSADDLP V7.4S, V7.H8
 	VADD    V5.S4, V5.S4, V7.S4
 
-	// Block1: VADDP + VSADDLP
+	// Finish weighted block 1
 	VADDP   V24.H8, V24.H8, V25.H8
 	WORD    $0x4E602B18         // VSADDLP V24.4S, V24.H8
+	WORD    $0x2E33C2BA         // VUMULL  V26.8H, V21.8B, V19.8B
+	WORD    $0x6E33C2BB         // VUMULL2 V27.8H, V21.B16, V19.B16
 	VADDP   V26.H8, V26.H8, V27.H8
 	WORD    $0x4E602B5A         // VSADDLP V26.4S, V26.H8
 	VADD    V24.S4, V24.S4, V26.S4
