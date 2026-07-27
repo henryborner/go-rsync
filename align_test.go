@@ -4,8 +4,8 @@ package delta
 
 import (
 	"crypto/rand"
-	mrand "math/rand"
 	"fmt"
+	mrand "math/rand"
 	"testing"
 )
 

@@ -7,6 +7,7 @@ on:
     branches: [main, master]
 
 jobs:
+  # ── amd64 + windows: vet, test, fuzz ──
   test:
     strategy:
       matrix:
@@ -25,13 +26,14 @@ jobs:
       - name: Test
         run: go test -count=1 -timeout=120s ./...
 
-      - name: Fuzz (quick)
+      - name: Fuzz
         run: |
           go test -fuzz=FuzzDeltaRoundTrip -fuzztime=10s
           go test -fuzz=FuzzChecksum1Parity -fuzztime=10s
           go test -fuzz=FuzzWireSignature -fuzztime=5s
           go test -fuzz=FuzzWireInstructions -fuzztime=5s
 
+  # ── amd64 benchmark (AVX2/SSE2 vs pure Go) ──
   bench-amd64:
     runs-on: ubuntu-latest
     steps:
@@ -40,16 +42,17 @@ jobs:
         with:
           go-version: '1.25'
 
-      - name: Benchmark (AMD64 AVX2/SSE2)
+      - name: Benchmark AMD64
         run: |
-          go test -bench=Checksum1 -benchtime=300ms -count=1 ./... 2>&1 | tee bench_amd64.txt
+          go test -bench='BenchmarkChecksum1' -benchtime=300ms -count=1 ./... 2>&1 | tee bench_amd64.txt
 
-      - name: Upload AMD64 benchmark
+      - name: Upload AMD64 results
         uses: actions/upload-artifact@v4
         with:
           name: bench-amd64
           path: bench_amd64.txt
 
+  # ── ARM64: vet, test, fuzz, bench (NEON UDOT/VUMULL vs pure Go) ──
   test-arm64:
     runs-on: ubuntu-24.04-arm
     steps:
@@ -58,43 +61,28 @@ jobs:
         with:
           go-version: '1.25'
 
+      - name: CPU Info
+        run: grep -E 'processor|Features|CPU part|CPU implementer' /proc/cpuinfo | head -5 || true
+
       - name: Vet
         run: go vet ./...
 
       - name: Test
         run: go test -count=1 -timeout=120s ./...
 
-      - name: Fuzz (quick)
+      - name: Fuzz
         run: |
           go test -fuzz=FuzzDeltaRoundTrip -fuzztime=10s
           go test -fuzz=FuzzChecksum1Parity -fuzztime=10s
           go test -fuzz=FuzzWireSignature -fuzztime=5s
           go test -fuzz=FuzzWireInstructions -fuzztime=5s
 
-      - name: Benchmark (ARM64 NEON)
+      - name: Benchmark ARM64
         run: |
           go test -bench=. -benchtime=300ms -count=1 ./... 2>&1 | tee bench_arm64.txt
 
-      - name: Upload ARM64 benchmark
+      - name: Upload ARM64 results
         uses: actions/upload-artifact@v4
         with:
           name: bench-arm64
           path: bench_arm64.txt
-
-  bench:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with:
-          go-version: '1.25'
-
-      - name: Benchmark
-        run: |
-          go test -bench=. -benchtime=200ms -count=1 ./... 2>&1 | tee bench.txt
-
-      - name: Upload benchmark results
-        uses: actions/upload-artifact@v4
-        with:
-          name: benchmark-results
-          path: bench.txt
