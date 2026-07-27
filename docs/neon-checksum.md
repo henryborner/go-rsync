@@ -59,13 +59,23 @@ Fallback for pre-2017 ARM64 CPUs without dotprod.
 ### Dispatch
 
 ```go
-if cpu.ARM64.HasASIMDDP && n >= 64 {
-    checksum1NEON_dotprod(data, &s1, &s2)  // UDOT, 27 GB/s
-} else if n >= 64 {
-    checksum1NEON(data, &s1, &s2)          // VUMULL, 12 GB/s
-} else {
-    // pure Go 128B batched fallback
+// Try UDOT first, fall back to VUMULL, then pure Go
+if n >= 64 {
+    ok := false
+    if useDotprod {
+        ok = checksum1NEON_dotprod(data, &s1, &s2)  // UDOT, 27 GB/s
+    }
+    if !ok {
+        ok = checksum1NEON(data, &s1, &s2)           // VUMULL, 12 GB/s
+    }
+    if ok {
+        p := n - n%64
+        // CHAR_OFFSET post-correction + scalar tail
+        ...
+        return s1, s2
+    }
 }
+// fall through to pure Go 128B batched path
 ```
 
 ## Version History
