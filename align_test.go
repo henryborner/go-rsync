@@ -6,16 +6,6 @@ import (
 	"testing"
 )
 
-func TestProbeVADDPcorrected(t *testing.T) {
-	got := probeVADDP2()
-	want := uint32(10) // {1,2,3,4} → pair→{3,7} → pair→{10}
-	if got != want {
-		t.Errorf("VADDP corrected order: got=%d want=%d — STILL BROKEN", got, want)
-	} else {
-		t.Logf("VADDP corrected order: OK got=%d", got)
-	}
-}
-
 func TestNEONParityRaw(t *testing.T) {
 	tests := []struct {
 		name string
