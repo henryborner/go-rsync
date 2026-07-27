@@ -39,16 +39,23 @@ func checksum1(data []byte) (uint32, uint32) {
 
 	var s1, s2 uint32
 
-	// NEON: UDOT (dotprod) if available, else VUMULL
+	// NEON: UDOT (dotprod, 128B min) or VUMULL (64B min)
 	if n >= 64 {
 		ok := false
-		if useDotprod {
+		if useDotprod && n >= 128 {
 			ok = checksum1NEON_dotprod(data, &s1, &s2)
+			if ok {
+				p := n - n%128
+				s1 += uint32(p) * CHAR_OFFSET
+				s2 += uint32(p) * uint32(p+1) / 2 * CHAR_OFFSET
+				for i := p; i < n; i++ {
+					s1 += uint32(data[i]) + CHAR_OFFSET
+					s2 += s1
+				}
+				return s1, s2
+			}
 		}
-		if !ok {
-			ok = checksum1NEON(data, &s1, &s2)
-		}
-		if ok {
+		if checksum1NEON(data, &s1, &s2) {
 			p := n - n%64
 			s1 += uint32(p) * CHAR_OFFSET
 			s2 += uint32(p) * uint32(p+1) / 2 * CHAR_OFFSET

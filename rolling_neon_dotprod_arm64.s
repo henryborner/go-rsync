@@ -1,8 +1,8 @@
 //go:build arm64
 
-// NEON checksum v12: UDOT s2 (4 insns/64B). Requires ARMv8.2+dotprod.
-// UDOT reuses byte-packed weight table — identical to VUMULL layout.
-// 4 UDOT replaces 8 VUMULL + 4 VADDP + 4 VSADDLP + 4 VADD = 20 insns.
+// NEON checksum v13: UDOT s2, 128B unrolled, VLD1 contiguous V2-V5.
+// 8 UDOT per 128B iteration. SUB/CBNZ once per 128B.
+// Requires ARMv8.2+dotprod.
 //
 // ⚠️  UDOT WORD encodings: GNU as -march=armv8.2-a+dotprod
 
@@ -12,7 +12,7 @@
 TEXT ·checksum1NEON_dotprod(SB), NOSPLIT, $0-41
 	MOVD    data+0(FP), R0
 	MOVD    data_len+8(FP), R1
-	CMP     $64, R1
+	CMP     $128, R1
 	BLT     bail
 
 	MOVD    s1+24(FP), R2
@@ -28,15 +28,15 @@ TEXT ·checksum1NEON_dotprod(SB), NOSPLIT, $0-41
 	VEOR    V12.B16, V12.B16, V12.B16
 
 	VLD1.P  32(R0), [V2.B16, V3.B16]
-	VLD1.P  32(R0), [V20.B16, V21.B16]
+	VLD1.P  32(R0), [V4.B16, V5.B16]
 
-	BIC     $63, R1, R7
-	LSR     $6, R7, R7          // N = len/64
+	BIC     $127, R1, R7
+	LSR     $7, R7, R7          // N = len/128
 
 loop:
+	// ====== Part 1: first 64B (preloaded V2-V5) ======
 	MOVD    R8, R10
 
-	// UDOT: 2 insns per 32B, direct accumulate into V12
 	WORD    $0x6E92944C         // UDOT V12.4S, V2.16B, V18.16B
 	WORD    $0x6E93946C         // UDOT V12.4S, V3.16B, V19.16B
 
@@ -46,11 +46,34 @@ loop:
 
 	MOVD    R8, R11
 
-	WORD    $0x6E92968C         // UDOT V12.4S, V20.16B, V18.16B
-	WORD    $0x6E9396AC         // UDOT V12.4S, V21.16B, V19.16B
+	WORD    $0x6E92948C         // UDOT V12.4S, V4.16B, V18.16B
+	WORD    $0x6E9394AC         // UDOT V12.4S, V5.16B, V19.16B
 
-	VUADDLV V20.B16, V0; VMOV V0.S[0], R4; ADD R4, R8
-	VUADDLV V21.B16, V0; VMOV V0.S[0], R4; ADD R4, R8
+	VUADDLV V4.B16, V0; VMOV V0.S[0], R4; ADD R4, R8
+	VUADDLV V5.B16, V0; VMOV V0.S[0], R4; ADD R4, R8
+	ADD     R11<<5, R9, R9
+
+	// Load second 64B
+	VLD1.P  32(R0), [V2.B16, V3.B16]
+	VLD1.P  32(R0), [V4.B16, V5.B16]
+
+	// ====== Part 2: second 64B (just loaded) ======
+	MOVD    R8, R10
+
+	WORD    $0x6E92944C         // UDOT V12.4S, V2.16B, V18.16B
+	WORD    $0x6E93946C         // UDOT V12.4S, V3.16B, V19.16B
+
+	VUADDLV V2.B16, V0; VMOV V0.S[0], R4; ADD R4, R8
+	VUADDLV V3.B16, V0; VMOV V0.S[0], R4; ADD R4, R8
+	ADD     R10<<5, R9, R9
+
+	MOVD    R8, R11
+
+	WORD    $0x6E92948C         // UDOT V12.4S, V4.16B, V18.16B
+	WORD    $0x6E9394AC         // UDOT V12.4S, V5.16B, V19.16B
+
+	VUADDLV V4.B16, V0; VMOV V0.S[0], R4; ADD R4, R8
+	VUADDLV V5.B16, V0; VMOV V0.S[0], R4; ADD R4, R8
 	ADD     R11<<5, R9, R9
 
 	SUB     $1, R7, R7
@@ -58,7 +81,7 @@ loop:
 	B       done
 load_next:
 	VLD1.P  32(R0), [V2.B16, V3.B16]
-	VLD1.P  32(R0), [V20.B16, V21.B16]
+	VLD1.P  32(R0), [V4.B16, V5.B16]
 	B       loop
 
 done:
