@@ -321,6 +321,8 @@ End-to-end delta round-trip, identical files, example usage.
 | 64 KB | 43.7 GB/s | 26.7 GB/s | 44.3 GB/s |
 | 1 MB | 43.6 GB/s | 42.4 GB/s | — |
 
+> Reference AVX2 = original rsync (C implementation compiled with SIMD checksum support), used as a baseline comparison.
+
 **AMD Ryzen 9 8940HX (Zen 4, laptop):**
 
 | Block Size | go-rsync | v1 (baseline) | Improvement |
