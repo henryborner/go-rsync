@@ -6,14 +6,13 @@ import (
 	"testing"
 )
 
-func TestProbeVADDPdone(t *testing.T) {
-	got := probeVADDPdone()
-	// V12={1,2,3,4}, VADDP reduce → {1+2, 3+4}=3,7 → {3+7}=10
-	want := uint32(10)
+func TestProbeVADDPcorrected(t *testing.T) {
+	got := probeVADDP2()
+	want := uint32(10) // {1,2,3,4} → pair→{3,7} → pair→{10}
 	if got != want {
-		t.Errorf("VADDP done probe: got=%d want=%d — Go VADDP encoding is BROKEN", got, want)
+		t.Errorf("VADDP corrected order: got=%d want=%d — STILL BROKEN", got, want)
 	} else {
-		t.Logf("VADDP done probe: OK got=%d", got)
+		t.Logf("VADDP corrected order: OK got=%d", got)
 	}
 }
 
