@@ -2,9 +2,13 @@
 
 package delta
 
-// checksum1NEON is implemented in rolling_neon_arm64.s (NEON assembly, 128B/iter).
+// checksum1NEON is implemented in rolling_neon_arm64.s (VUMULL fallback, 64B/iter).
 //go:noescape
 func checksum1NEON(data []byte, s1, s2 *uint32) bool
+
+// checksum1NEON_dotprod uses UDOT when ARMv8.2+dotprod is available.
+//go:noescape
+func checksum1NEON_dotprod(data []byte, s1, s2 *uint32) bool
 
 // Checksum1 computes a one-shot rolling checksum.
 func Checksum1(data []byte) uint32 {
@@ -31,16 +35,18 @@ func checksum1(data []byte) (uint32, uint32) {
 
 	var s1, s2 uint32
 
-	// NEON assembly (128B/iter, 4×32B blocks + scalar remainder in Go)
-	if n >= 128 && checksum1NEON(data, &s1, &s2) {
-		p := n - n%128
-		s1 += uint32(p) * CHAR_OFFSET
-		s2 += uint32(p) * uint32(p+1) / 2 * CHAR_OFFSET
-		for i := p; i < n; i++ {
-			s1 += uint32(data[i]) + CHAR_OFFSET
-			s2 += s1
+	// NEON assembly: prefer UDOT (dotprod), fallback VUMULL
+	if n >= 64 {
+		if checksum1NEON_dotprod(data, &s1, &s2) || checksum1NEON(data, &s1, &s2) {
+			p := n - n%64
+			s1 += uint32(p) * CHAR_OFFSET
+			s2 += uint32(p) * uint32(p+1) / 2 * CHAR_OFFSET
+			for i := p; i < n; i++ {
+				s1 += uint32(data[i]) + CHAR_OFFSET
+				s2 += s1
+			}
+			return s1, s2
 		}
-		return s1, s2
 	}
 
 	i := 0
