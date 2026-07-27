@@ -365,4 +365,43 @@ Same Xeon Platinum cloud VM, data pattern `i*7%251`, full tail-byte handling. Me
 
 ---
 
-> Related: [MD5 SIMD Reference](md5-simd.md) | [Project README](../README.md)
+> Related: [MD5 SIMD Reference](md5-simd.md) | [ARM64 NEON Reference](neon-checksum.md) | [Project README](../README.md)
+
+## C. ARM64 NEON Path
+
+ARM64 uses a two-tier dispatch with automatic CPU feature detection.
+
+### UDOT path (dotprod, primary)
+
+Requires ARMv8.2+dotprod (2017+: Cortex-A75, Apple A11, Graviton, Neoverse N1+).
+
+```
+UDOT V12.4S, Vn.16B, Vm.16B      4 insns per 64B
+→ V12.S[i] += Σ(j=0..3) byte[4i+j] × weight[4i+j]
+```
+
+No intermediate reduction needed — UDOT accumulates directly into int32 lanes.
+Weight table is byte-packed (same layout as VUMULL).
+
+### VUMULL path (fallback)
+
+For pre-2017 ARM64 CPUs without dotprod:
+
+```
+VUMULL  ×8 — byte×weight → halfword
+VADDP   ×4 — pairwise reduce
+VSADDLP ×4 — pair-sum to int32
+VADD    ×4 — merge halves
+```
+
+20 insns per 64B vs UDOT's 4.
+
+### CI Performance (ubuntu-24.04-arm)
+
+| Size | Pure Go | VUMULL | UDOT | UDOT vs Go |
+|------|--------|--------|------|:--:|
+| 8 KB | 3,382 MB/s | 11,909 MB/s | 26,073 MB/s | 7.7x |
+| 64 KB | 3,387 MB/s | 12,036 MB/s | 26,927 MB/s | 8.0x |
+| 1024 KB | 3,391 MB/s | 11,958 MB/s | 25,820 MB/s | 7.6x |
+
+Full details in [neon-checksum.md](neon-checksum.md).
