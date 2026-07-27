@@ -1,11 +1,16 @@
-// NEON checksum v9: VUXTL+VMLAL s2 (fixed weights + all 4 halves per block), VUADDLV s1, 64B unrolled.
-// Fixes v7: (1) weight table now halfword-packed for VMLAL .4H/.8H (was byte-packed for VUMULL).
-//           (2) V5/V6 and V24/V25 now get VMLAL (were discarded).
-//           (3) VADDP mnemonic replaced with WORD — Go 1.26 ARM64 asm generates wrong VADDP encoding.
+// NEON checksum v9: VUXTL+VMLAL s2, VUADDLV s1, 64B unrolled. ALL WORD — zero mnemonics.
+// Fixes v7: (1) weight table halfword-packed for VMLAL .4H/.8H (was byte-packed for VUMULL).
+//           (2) V5/V6 and V24/V25 now get VMLAL (were discarded, losing half the data).
+//           (3) VADDP/VADD replaced with WORD — Go 1.26 ARM64 asm operand order is buggy.
 // 16 VMLAL per 64B; V12 serial latency hidden by s1 scalar interleave.
 //
 // ⚠️  CBNZ mandatory. NEON clobbers NZCV flags.
-// ⚠️  VADDP must use WORD, NOT mnemonic — Go 1.26 assembler bug.
+// ⚠️  Go 1.26 ARM64 asm operand-order bugs (ALL SIMD mnemonics affected):
+//     VADD  Vn,Vm,Vd  →  Go maps: 1st→Rn, 2nd→Rm, 3rd→Rd  (Vd LAST, correct)
+//     VADDP Vn,Vm,Vd  →  Go maps: 1st→Rm, 2nd→Rn, 3rd→Rd  (Vn/Vm SWAPPED vs VADD!)
+//     VMOV  Vn,Vd     →  Go maps: 1st→Rn, 2nd→Rd           (Vd LAST)
+//     Conclusion: operand mapping is INCONSISTENT across instructions.
+//     Never use NEON mnemonics on arm64. Always use GNU-as-verified WORD.
 
 #include "textflag.h"
 
