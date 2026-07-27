@@ -1,9 +1,11 @@
 // NEON checksum v9: VUXTL+VMLAL s2 (fixed weights + all 4 halves per block), VUADDLV s1, 64B unrolled.
 // Fixes v7: (1) weight table now halfword-packed for VMLAL .4H/.8H (was byte-packed for VUMULL).
 //           (2) V5/V6 and V24/V25 now get VMLAL (were discarded).
+//           (3) VADDP mnemonic replaced with WORD — Go 1.26 ARM64 asm generates wrong VADDP encoding.
 // 16 VMLAL per 64B; V12 serial latency hidden by s1 scalar interleave.
 //
 // ⚠️  CBNZ mandatory. NEON clobbers NZCV flags.
+// ⚠️  VADDP must use WORD, NOT mnemonic — Go 1.26 assembler bug.
 
 #include "textflag.h"
 
@@ -94,8 +96,8 @@ load_next:
 	B       loop
 
 done:
-	VADDP   V0.S4, V12.S4, V12.S4
-	VADDP   V0.S4, V0.S4, V0.S4
+	WORD    $0x4EACBD80         // VADDP V0.4S, V12.4S, V12.4S
+	WORD    $0x4EA0BC00         // VADDP V0.4S, V0.4S, V0.4S
 	VMOV    V0.S[0], R4
 	ADD     R4, R9
 

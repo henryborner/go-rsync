@@ -6,6 +6,17 @@ import (
 	"testing"
 )
 
+func TestProbeVADDPdone(t *testing.T) {
+	got := probeVADDPdone()
+	// V12={1,2,3,4}, VADDP reduce → {1+2, 3+4}=3,7 → {3+7}=10
+	want := uint32(10)
+	if got != want {
+		t.Errorf("VADDP done probe: got=%d want=%d — Go VADDP encoding is BROKEN", got, want)
+	} else {
+		t.Logf("VADDP done probe: OK got=%d", got)
+	}
+}
+
 func TestNEONParityRaw(t *testing.T) {
 	tests := []struct {
 		name string
