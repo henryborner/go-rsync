@@ -27,31 +27,33 @@ TEXT ·checksum1NEON(SB), NOSPLIT, $0-41
 	VLD1.P  32(R0), [V2.B16, V3.B16]
 	VLD1.P  32(R0), [V20.B16, V21.B16]
 
-	AND     $~63, R1, R7
+	BIC     $63, R1, R7         // len & ~63 (single insn vs AND $~63)
 	LSR     $6, R7, R7          // N = len/64
 
 loop:
 	MOVD    R8, R10              // s1_before_block0
 
-	// === Block 0: s1 via VUADDLV ===
-	VUADDLV V2.B16, V0; VMOV V0.S[0], R4; ADD R4, R8
-	VUADDLV V3.B16, V0; VMOV V0.S[0], R4; ADD R4, R8
-
-	// s2 += 32 * s1_before_block0
-	ADD     R10<<5, R9, R9
-
-	MOVD    R8, R11              // s1_before_block1 (=s1_after_block0)
-
-	// === Block 1: s1 via VUADDLV ===
-	VUADDLV V20.B16, V0; VMOV V0.S[0], R4; ADD R4, R8
-	VUADDLV V21.B16, V0; VMOV V0.S[0], R4; ADD R4, R8
-
-	// s2 += 32 * s1_before_block1
-	ADD     R11<<5, R9, R9
-
-	// === Block 0: weighted ===
+	// Fire weighted WORDs early (long latency), overlap with s1 scalar
 	WORD    $0x2E32C045         // VUMULL  V5.8H, V2.8B, V18.8B
 	WORD    $0x6E32C046         // VUMULL2 V6.8H, V2.B16, V18.B16
+
+	// s1 block 0 (scalar — runs while VUMULL in pipeline)
+	VUADDLV V2.B16, V0; VMOV V0.S[0], R4; ADD R4, R8
+	VUADDLV V3.B16, V0; VMOV V0.S[0], R4; ADD R4, R8
+	ADD     R10<<5, R9, R9      // s2 += 32*s1_before_block0
+
+	MOVD    R8, R11              // s1_before_block1
+
+	// Fire weighted WORDs for block 1 (overlap with s1)
+	WORD    $0x2E32C298         // VUMULL  V24.8H, V20.8B, V18.8B
+	WORD    $0x6E32C299         // VUMULL2 V25.8H, V20.B16, V18.B16
+
+	// s1 block 1
+	VUADDLV V20.B16, V0; VMOV V0.S[0], R4; ADD R4, R8
+	VUADDLV V21.B16, V0; VMOV V0.S[0], R4; ADD R4, R8
+	ADD     R11<<5, R9, R9
+
+	// Finish weighted block 0 (VUMULL results ready)
 	VADDP   V5.H8, V5.H8, V6.H8
 	WORD    $0x4E6028A5         // VSADDLP V5.4S, V5.H8
 	WORD    $0x2E33C067         // VUMULL  V7.8H, V3.8B, V19.8B
@@ -60,9 +62,7 @@ loop:
 	WORD    $0x4E6028E7         // VSADDLP V7.4S, V7.H8
 	VADD    V5.S4, V5.S4, V7.S4
 
-	// === Block 1: weighted ===
-	WORD    $0x2E32C298         // VUMULL  V24.8H, V20.8B, V18.8B
-	WORD    $0x6E32C299         // VUMULL2 V25.8H, V20.B16, V18.B16
+	// Finish weighted block 1
 	VADDP   V24.H8, V24.H8, V25.H8
 	WORD    $0x4E602B18         // VSADDLP V24.4S, V24.H8
 	WORD    $0x2E33C2BA         // VUMULL  V26.8H, V21.8B, V19.8B
@@ -71,7 +71,6 @@ loop:
 	WORD    $0x4E602B5A         // VSADDLP V26.4S, V26.H8
 	VADD    V24.S4, V24.S4, V26.S4
 
-	// Accumulate all weighted
 	VADD    V5.S4, V5.S4, V24.S4
 	VADD    V12.S4, V12.S4, V5.S4
 
