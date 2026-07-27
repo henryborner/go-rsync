@@ -2,7 +2,7 @@
 
 package delta
 
-// checksum1NEON is implemented in rolling_neon_arm64.s (NEON assembly, 64B/iter).
+// checksum1NEON is implemented in rolling_neon_arm64.s (NEON assembly, 128B/iter).
 //go:noescape
 func checksum1NEON(data []byte, s1, s2 *uint32) bool
 
@@ -31,9 +31,9 @@ func checksum1(data []byte) (uint32, uint32) {
 
 	var s1, s2 uint32
 
-	// NEON assembly (64B/iter, 2×32B blocks + scalar remainder in Go)
-	if n >= 64 && checksum1NEON(data, &s1, &s2) {
-		p := n - n%64
+	// NEON assembly (128B/iter, 4×32B blocks + scalar remainder in Go)
+	if n >= 128 && checksum1NEON(data, &s1, &s2) {
+		p := n - n%128
 		s1 += uint32(p) * CHAR_OFFSET
 		s2 += uint32(p) * uint32(p+1) / 2 * CHAR_OFFSET
 		for i := p; i < n; i++ {
