@@ -81,7 +81,8 @@ jobs:
 
       - name: Benchmark ARM64
         run: |
-          go test -bench=. -benchtime=300ms -count=1 ./... 2>&1 | tee bench_arm64.txt
+          go test -bench=BenchmarkMD5x4 -benchtime=300ms -count=1 ./... 2>&1 | tee bench_arm64.txt
+          go test -bench=BenchmarkSignature_NEON -benchtime=300ms -count=1 ./... 2>&1 | tee -a bench_arm64.txt
 
       - name: Upload ARM64 results
         uses: actions/upload-artifact@v4

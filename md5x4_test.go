@@ -95,3 +95,77 @@ func TestMD5x4_NEON_Parity(t *testing.T) {
 		}
 	}
 }
+
+// ── Benchmarks ─────────────────────────────────────────────────────
+
+// BenchmarkMD5x4_Bulk measures 4-way NEON MD5 throughput.
+// 4 blocks × 4096 bytes = 16KB per call.
+func BenchmarkMD5x4_Bulk(b *testing.B) {
+	if !md5x4available() {
+		b.Skip("NEON not available")
+	}
+	const bytesPerBlock = 4096
+	data := make([]byte, 4*bytesPerBlock)
+	for i := range data {
+		data[i] = byte(i % 256)
+	}
+	var offsets, lengths [4]int
+	for i := 0; i < 4; i++ {
+		offsets[i] = i * bytesPerBlock
+		lengths[i] = bytesPerBlock
+	}
+
+	var out [4][16]byte
+
+	b.SetBytes(4 * bytesPerBlock)
+	b.ResetTimer()
+	for b.Loop() {
+		md5Hash4wayNEON(data, offsets, lengths, &out)
+	}
+}
+
+// BenchmarkMD5x4Core_Raw measures PURE md5x4core throughput
+// — no load, no transpose, no tail. Pre-builds transposed x matrix once.
+func BenchmarkMD5x4Core_Raw(b *testing.B) {
+	if !md5x4available() {
+		b.Skip("NEON not available")
+	}
+
+	var x [16][4]uint32
+	for w := 0; w < 16; w++ {
+		for ln := 0; ln < 4; ln++ {
+			x[w][ln] = uint32(w*4 + ln)
+		}
+	}
+
+	var state [4][4]uint32
+	state[0] = [4]uint32{0x67452301, 0x67452301, 0x67452301, 0x67452301}
+	state[1] = [4]uint32{0xefcdab89, 0xefcdab89, 0xefcdab89, 0xefcdab89}
+	state[2] = [4]uint32{0x98badcfe, 0x98badcfe, 0x98badcfe, 0x98badcfe}
+	state[3] = [4]uint32{0x10325476, 0x10325476, 0x10325476, 0x10325476}
+
+	b.SetBytes(64) // one 64-byte block × 4 lanes = 256B per call
+	b.ResetTimer()
+	for b.Loop() {
+		md5x4core(&x, &state)
+	}
+}
+
+// BenchmarkSignature_NEON measures end-to-end NEON signature generation throughput.
+func BenchmarkSignature_NEON(b *testing.B) {
+	if !md5x4available() {
+		b.Skip("NEON not available")
+	}
+	const fileSize = 16 * 1024 * 1024 // 16 MB
+	data := make([]byte, fileSize)
+	for i := range data {
+		data[i] = byte(i % 256)
+	}
+	blockSize := CalculateBlockSize(int64(fileSize))
+
+	b.SetBytes(fileSize)
+	b.ResetTimer()
+	for b.Loop() {
+		GenerateSignature(data, blockSize, "md5")
+	}
+}
