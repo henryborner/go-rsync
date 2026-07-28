@@ -89,6 +89,57 @@ func TestGenerateSignatureParallel(t *testing.T) {
 		}
 	}
 }
+
+// TestGenerateSignatureBoundary tests edge cases where the last block is
+// partial AND numBlocks is exactly divisible by the SIMD batch size.
+// This triggered the "total bytes" and "Length" bugs in GenerateSignatureReader.
+func TestGenerateSignatureBoundary(t *testing.T) {
+	blockSize := int32(700)
+
+	// Test cases: fileSize where numBlocks % batchSize == 0 with partial last block.
+	// batch sizes: AVX-512=16, AVX2=8, NEON=4.
+	tests := []struct {
+		name     string
+		fileSize int64
+	}{
+		// numBlocks = ceil(size/700). Target: numBlocks mod batch == 0.
+		{"8 blocks, last partial", 8*700 - 1},       // numBlocks=8 (=8),  last=699B
+		{"8 blocks, last tiny", 8*700 - 690},         // numBlocks=8 (=8),  last=10B
+		{"16 blocks, last partial", 16*700 - 1},      // numBlocks=16 (=16), last=699B
+		{"4 blocks, last partial", 4*700 - 1},        // numBlocks=4 (=4),  last=699B
+		{"not divisible", 8*700 + 300},               // numBlocks=9, last=300B — scalar path
+		{"exact multiple", 8 * 700},                  // numBlocks=8, all full — SIMD path
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			data := make([]byte, tt.fileSize)
+			for i := range data {
+				data[i] = byte((i * 7) % 251) // deterministic, not rand
+			}
+
+			serial := GenerateSignature(data, blockSize, "md5")
+			parallel := GenerateSignatureParallel(data, blockSize, "md5")
+
+			if len(serial.BlockSums) != len(parallel.BlockSums) {
+				t.Fatalf("block count: serial=%d parallel=%d",
+					len(serial.BlockSums), len(parallel.BlockSums))
+			}
+
+			for i := range serial.BlockSums {
+				sa, pa := serial.BlockSums[i], parallel.BlockSums[i]
+				if sa.Index != pa.Index || sa.Sum1 != pa.Sum1 || sa.Offset != pa.Offset || sa.Length != pa.Length {
+					t.Errorf("block %d mismatch:\n  serial: idx=%d sum1=%d off=%d len=%d\n  parallel: idx=%d sum1=%d off=%d len=%d",
+						i, sa.Index, sa.Sum1, sa.Offset, sa.Length,
+						pa.Index, pa.Sum1, pa.Offset, pa.Length)
+				}
+				if !bytes.Equal(sa.Sum2, pa.Sum2) {
+					t.Errorf("block %d Sum2 mismatch", i)
+				}
+			}
+		})
+	}
+}
 func TestDeltaRoundTrip(t *testing.T) {
 	// Simulate: basisFile (old version) → newFile (new version)
 	basisFile := make([]byte, 100*1024) // 100KB
