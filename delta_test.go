@@ -58,6 +58,32 @@ func TestGenerateSignature(t *testing.T) {
 		}
 	}
 }
+
+func TestCalculateBlockSizeBoundary(t *testing.T) {
+	tests := []struct {
+		fileSize int64
+		want     int32
+	}{
+		{0, 700},
+		{1, 700},
+		{100, 700},
+		{490 * 1024, 700},     // still in <=490KB range
+		{490*1024 + 1, 700},   // just above, still 700 (clamped up)
+		{7_000_000, 700},      // 7000000/10000=700, clamp to 700
+		{7_000_001, 700},      // 700, clamped
+		{10_000_000, 1000},    // 10000000/10000=1000
+		{100_000_000, 10000},  // 100000000/10000=10000
+		{1_310_720_000, 131072}, // exactly max
+		{2_000_000_000, 131072}, // above max, clamped
+	}
+	for _, tt := range tests {
+		got := CalculateBlockSize(tt.fileSize)
+		if got != tt.want {
+			t.Errorf("CalculateBlockSize(%d) = %d, want %d", tt.fileSize, got, tt.want)
+		}
+	}
+}
+
 func TestGenerateSignatureParallel(t *testing.T) {
 	data := make([]byte, 500*1024) // 500KB — enough blocks to split
 	rand.Read(data)
