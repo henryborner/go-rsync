@@ -829,7 +829,7 @@ func GenerateSignatureParallel(data []byte, blockSize int32, strongAlgo string) 
 		go func(start, end int) {
 			defer wg.Done()
 
-			// Use SIMD batch path (8-way) when available for md5/sha256.
+			// Use SIMD batch path (8-way AVX2 / 4-way NEON) when available for md5.
 			if strongAlgo == "md5" && md5x8available() && blockSize >= 64 {
 				const batch = 8
 				for base := start; base < end; base += batch {
@@ -869,6 +869,66 @@ func GenerateSignatureParallel(data []byte, blockSize int32, strongAlgo string) 
 						}
 					} else {
 						// Tail < 8 blocks → scalar.
+						for b := 0; b < n; b++ {
+							idx := base + b
+							off := int64(idx) * int64(blockSize)
+							remain := fileSize - off
+							if remain > int64(blockSize) {
+								remain = int64(blockSize)
+							}
+							block := data[off : off+remain]
+							sum2Start := idx * algo.Length
+							sum2 := algo.FastSum(sumBuf[sum2Start:sum2Start+algo.Length], block)
+							sig.BlockSums[idx] = BlockSum{
+								Index:  idx,
+								Sum1:   Checksum1(block),
+								Sum2:   sum2,
+								Offset: off,
+								Length: int32(len(block)),
+							}
+						}
+					}
+				}
+				return
+			}
+
+			if strongAlgo == "md5" && md5x4available() && blockSize >= 64 {
+				const batch = 4
+				for base := start; base < end; base += batch {
+					n := batch
+					if base+n > end {
+						n = end - base
+					}
+					dataOff := int64(base) * int64(blockSize)
+					batchEnd := dataOff + int64(n)*int64(blockSize)
+					if batchEnd > fileSize {
+						batchEnd = fileSize
+					}
+
+					batchBuf := data[dataOff:batchEnd]
+					if n == batch && batchEnd-dataOff >= int64(batch)*int64(blockSize) {
+						var off4, len4 [4]int
+						o := 0
+						for b := 0; b < 4; b++ {
+							off4[b] = o
+							len4[b] = int(blockSize)
+							o += int(blockSize)
+						}
+						var out4 [4][16]byte
+						md5Hash4wayNEON(batchBuf, off4, len4, &out4)
+						for b := 0; b < 4; b++ {
+							idx := base + b
+							sum2Start := idx * algo.Length
+							copy(sumBuf[sum2Start:], out4[b][:])
+							sig.BlockSums[idx] = BlockSum{
+								Index:  idx,
+								Sum1:   Checksum1(batchBuf[b*int(blockSize) : (b+1)*int(blockSize)]),
+								Sum2:   sumBuf[sum2Start : sum2Start+algo.Length],
+								Offset: int64(idx) * int64(blockSize),
+								Length: blockSize,
+							}
+						}
+					} else {
 						for b := 0; b < n; b++ {
 							idx := base + b
 							off := int64(idx) * int64(blockSize)
@@ -1134,6 +1194,76 @@ func GenerateSignatureReader(r io.Reader, fileSize int64, blockSize int32, stron
 				}
 			} else {
 				// Tail < 8 blocks → scalar fallback
+				off := 0
+				for b := 0; b < n; b++ {
+					idx := int(base) + b
+					remain := fileSize - int64(idx)*int64(blockSize)
+					if remain > int64(blockSize) {
+						remain = int64(blockSize)
+					}
+					block := batchBuf[off : off+int(remain)]
+					start := idx * algo.Length
+					algo.FastSum(sumBuf[start:start+algo.Length], block)
+					sig.BlockSums[idx] = BlockSum{
+						Index:  idx,
+						Sum1:   Checksum1(block),
+						Sum2:   sumBuf[start : start+algo.Length],
+						Offset: int64(idx) * int64(blockSize),
+						Length: int32(len(block)),
+					}
+					off += int(remain)
+				}
+			}
+		}
+		return sig
+	}
+
+	// NEON 4-way md5 fast path for ARM64.
+	if strongAlgo == "md5" && md5x4available() {
+		const batchSize = 4
+		batchBuf := make([]byte, batchSize*int(blockSize))
+
+		for base := int64(0); base < numBlocks; base += batchSize {
+			n := batchSize
+			if base+int64(n) > numBlocks {
+				n = int(numBlocks - base)
+			}
+
+			total := 0
+			for b := 0; b < n; b++ {
+				remain := fileSize - (base+int64(b))*int64(blockSize)
+				if remain > int64(blockSize) {
+					remain = int64(blockSize)
+				}
+				if _, err := io.ReadFull(r, batchBuf[total:total+int(remain)]); err != nil {
+					return sig
+				}
+				total += int(remain)
+			}
+
+			if n == batchSize {
+				var off4, len4 [4]int
+				off := 0
+				for b := 0; b < 4; b++ {
+					off4[b] = off
+					len4[b] = int(blockSize)
+					off += int(blockSize)
+				}
+				var out4 [4][16]byte
+				md5Hash4wayNEON(batchBuf, off4, len4, &out4)
+				for b := 0; b < 4; b++ {
+					idx := int(base) + b
+					start := idx * algo.Length
+					copy(sumBuf[start:], out4[b][:])
+					sig.BlockSums[idx] = BlockSum{
+						Index:  idx,
+						Sum1:   Checksum1(batchBuf[b*int(blockSize) : (b+1)*int(blockSize)]),
+						Sum2:   sumBuf[start : start+algo.Length],
+						Offset: (base + int64(b)) * int64(blockSize),
+						Length: blockSize,
+					}
+				}
+			} else {
 				off := 0
 				for b := 0; b < n; b++ {
 					idx := int(base) + b
