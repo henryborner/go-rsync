@@ -1110,7 +1110,8 @@ func GenerateSignatureReader(r io.Reader, fileSize int64, blockSize int32, stron
 				total += int(remain)
 			}
 
-			if n == batchSize {
+			// Only use SIMD if all blocks are exactly full-sized (total bytes match).
+			if n == batchSize && total == batchSize*int(blockSize) {
 				var off16, len16 [16]int
 				var out16 [16][16]byte
 				off := 0
@@ -1185,7 +1186,8 @@ func GenerateSignatureReader(r io.Reader, fileSize int64, blockSize int32, stron
 				total += int(remain)
 			}
 
-			if n == batchSize {
+			// Only use SIMD if all blocks are exactly full-sized.
+			if n == batchSize && total == batchSize*int(blockSize) {
 				// 8 full blocks → AVX2 SIMD
 				var off8, len8 [8]int
 				off := 0
@@ -1261,7 +1263,7 @@ func GenerateSignatureReader(r io.Reader, fileSize int64, blockSize int32, stron
 				total += int(remain)
 			}
 
-			if n == batchSize {
+			if n == batchSize && total == batchSize*int(blockSize) {
 				var off4, len4 [4]int
 				off := 0
 				for b := 0; b < 4; b++ {
@@ -1335,7 +1337,7 @@ func GenerateSignatureReader(r io.Reader, fileSize int64, blockSize int32, stron
 				total += int(remain)
 			}
 
-			if n == batchSize {
+			if n == batchSize && total == batchSize*int(blockSize) {
 				var off8, len8 [8]int
 				off := 0
 				for b := 0; b < 8; b++ {
