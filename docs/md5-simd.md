@@ -182,7 +182,7 @@ Same pattern as AVX2: V0-V3 hold (a,b,c,d), logical roles permute each step. Onl
 
 ## 6. 16-way AVX-512 Core
 
-### 5.1 Key Differences from AVX2
+### 6.1 Key Differences from AVX2
 
 | Aspect | AVX2 | AVX-512 |
 |--------|------|---------|
@@ -193,7 +193,7 @@ Same pattern as AVX2: V0-V3 hold (a,b,c,d), logical roles permute each step. Onl
 | Gather mask | YMM (`VPCMPEQD`) | k-mask (`KXNORW K1,K1,K1`) |
 | Theoretical throughput | 1× | ~3× (2× lanes × ~1.5× IPC) |
 
-### 5.2 VPTERNLOGD Round Functions
+### 6.2 VPTERNLOGD Round Functions
 
 All F functions computed via a single VPTERNLOGD with truth-table immediate:
 
@@ -206,17 +206,17 @@ All F functions computed via a single VPTERNLOGD with truth-table immediate:
 
 > **Note**: These values are for Go Plan 9 operand order. See §7.2.
 
-### 5.3 Code Generator
+### 6.3 Code Generator
 
 `gen_md5x16/main.go` emits 64 unrolled steps with ZMM registers, VPTERNLOGD F functions, VPROLD rotation, and 64-byte T-constant tables (16× uint32). Output: `md5x16_amd64.s`.
 
 ## 7. Gather Load
 
-### 6.1 VPGATHERDD
+### 7.1 VPGATHERDD
 
 Collects dwords from scattered positions in one instruction. AVX2 uses a YMM mask register; AVX-512 uses a k-mask.
 
-### 6.2 Mask Zeroing
+### 7.2 Mask Zeroing
 
 VPGATHERDD **zeros the mask register** after execution (Intel specification). Must reload the mask before every gather:
 
@@ -225,7 +225,7 @@ VPGATHERDD **zeros the mask register** after execution (Intel specification). Mu
 
 Without reload, subsequent gathers silently read zero data.
 
-### 6.3 VPGATHERDD Go Assembly Syntax
+### 7.3 VPGATHERDD Go Assembly Syntax
 
 VPGATHERDD is supported with VSIB for both VEX (AVX2) and EVEX (AVX-512)
 encodings.  The AVX2 form uses a YMM mask register as the first operand;
@@ -238,14 +238,14 @@ the AVX-512 form uses a k-mask.
 
 ## 8. Assembly Notes
 
-### 7.1 VPANDN Operand Order (Go Plan 9 Convention)
+### 8.1 VPANDN Operand Order (Go Plan 9 Convention)
 
 Go Plan 9 `VPANDN A,B,C` = `C = A &^ B` (unlike Intel's `C = ~A & B`).
 This is by design in Go's assembler — it applies the same src1/src2 swap
 convention to all non-commutative SIMD instructions. The AVX2 code
 generator uses the Go operand order for R1, R2, and R4.
 
-### 7.2 VPTERNLOGD Operand Order (Go Plan 9 Convention)
+### 8.2 VPTERNLOGD Operand Order (Go Plan 9 Convention)
 
 Same convention as VPANDN: Go Plan 9 `VPTERNLOGD imm,src1,src2,dst`
 computes the truth-table index as `n = (dst<<2)|(src2<<1)|src1`,
@@ -254,18 +254,18 @@ while Intel uses `n = (dst<<2)|(src1<<1)|src2`.
 The AVX-512 code generator uses Go-swapped immediates (R1=$0xD8, R2=$0xAC,
 R4=$0x63). Using Intel-manual immediate values will produce wrong MD5 hashes.
 
-### 7.3 VPMADDUBSW Operand Order (Go Plan 9 Convention)
+### 8.3 VPMADDUBSW Operand Order (Go Plan 9 Convention)
 
 Go Plan 9: signed operand first, unsigned operand second.
 Intel manual: unsigned first, signed second.
 Consistent with Go's general approach of swapping src1/src2 relative to
 Intel convention.
 
-### 7.4 VPGATHERDD Mask Initialization
+### 8.4 VPGATHERDD Mask Initialization
 
 Must explicitly set to all-ones. YMM: `VPCMPEQD Y,Y,Y`; k-mask: `KXNORW K1,K1,K1`. Uninitialized masks silently fill zeros.
 
-### 7.5 Miscellaneous
+### 8.5 Miscellaneous
 
 - **Editing `.s` files**: Use a proper text editor, not PowerShell file redirection which may change encoding.
 - **Cross-compilation**: `$env:GOOS` persists in PowerShell. Clear with `$env:GOOS=""` after cross-compiling.
