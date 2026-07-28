@@ -64,8 +64,8 @@ func TestMD5x4_NEON_Parity(t *testing.T) {
 		t.Skip("NEON not available")
 	}
 
-	// 4 different blocks, various sizes
-	sizes := []int{64, 128, 255, 700}
+	// Include MD5 padding boundary: tail<56→1 chunk, tail≥56→2 chunks.
+	sizes := []int{55, 56, 57, 63, 64, 128, 255, 700}
 	data := make([]byte, 4*700)
 	for i := range data {
 		data[i] = byte((i * 7) % 256)

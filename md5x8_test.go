@@ -231,6 +231,52 @@ func TestMD5x8_SlowPath_MixedChunks(t *testing.T) {
 	}
 }
 
+// TestMD5x8_MD5PaddingBoundary tests the critical 55/56/57 byte tail boundary.
+// MD5 padding: tailLen<56 → 1 chunk; tailLen≥56 → 2 chunks.
+// Block sizes chosen so tail=exactly 55, 56, 57 after full 64B chunks.
+func TestMD5x8_MD5PaddingBoundary(t *testing.T) {
+	if !md5x8available() {
+		t.Skip("AVX2 not available")
+	}
+
+	// 2 full chunks (128) + tail =  55 → 183
+	// 2 full chunks (128) + tail =  56 → 184
+	// 2 full chunks (128) + tail =  57 → 185
+	// Also include pure tail (0 full chunks): 55, 56, 57, and edge: 63, 64
+	lengthsList := []int{183, 184, 185, 55, 56, 57, 63, 64}
+
+	data := make([]byte, 0)
+	var offsets, lengths [8]int
+	off := 0
+	for b, ln := range lengthsList {
+		offsets[b] = off
+		lengths[b] = ln
+		off += ln
+	}
+	data = make([]byte, off)
+	for i := range data {
+		data[i] = byte((i * 13) % 251)
+	}
+
+	var outAVX2 [8][16]byte
+	md5Hash8wayAVX2(data, offsets, lengths, &outAVX2)
+
+	var outRef [8][16]byte
+	md5Hash8wayGo(data, offsets, lengths, &outRef)
+
+	for b, ln := range lengthsList {
+		expected := md5.Sum(data[offsets[b] : offsets[b]+ln])
+		if outAVX2[b] != expected {
+			t.Errorf("AVX2 lane %d (len=%d, tail=%d) vs md5.Sum:\n  got:  %x\n  want: %x",
+				b, ln, ln%64, outAVX2[b], expected)
+		}
+		if outAVX2[b] != outRef[b] {
+			t.Errorf("AVX2 lane %d (len=%d) vs Go ref:\n  AVX2: %x\n  Go:   %x",
+				b, ln, outAVX2[b], outRef[b])
+		}
+	}
+}
+
 // ---------------------------------------------------------------------------
 // Benchmark: compare 1×8 scalar (8 sequential md5.Sum calls) vs 8-way SIMD
 // ---------------------------------------------------------------------------
