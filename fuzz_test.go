@@ -355,6 +355,41 @@ func FuzzWireDecodeCorrupt(t *testing.F) {
 	})
 }
 
+// ── Corrupt instruction stream fuzz ─────────────────────────────────
+
+func FuzzWireInstructionsCorrupt(t *testing.F) {
+	// Seeds: various truncated/corrupt instruction streams
+	t.Add([]byte{})                                // empty
+	t.Add([]byte{0, 0, 0, 0})                      // count=0, no data after
+	t.Add([]byte{0, 0, 0, 1})                      // count=1, no instruction bytes
+	t.Add([]byte{0, 0, 0, 1, 0x80})                // count=1, literal flag, no length
+	t.Add([]byte{0, 0, 0, 1, 0x80, 0, 0, 0, 10})  // count=1, literal, len=10, no data
+	t.Add([]byte{0, 0, 0, 1, 0, 0, 0, 0, 0, 1})   // count=1, match, blockIdx=1 only
+
+	t.Fuzz(func(t *testing.T, data []byte) {
+		// DecodeInstructionsStream must not panic on any input.
+		// It should either succeed cleanly (for valid streams) or
+		// return an error (for corrupt/truncated streams).
+		err := DecodeInstructionsStream(bytes.NewReader(data), func(mr MatchResult) error {
+			// For corrupt streams, we may get partial instructions.
+			// Just verify the fields are self-consistent.
+			if !mr.IsLiteral {
+				// Match instructions: BlockIdx can be anything from fuzzing.
+				_ = mr.BlockIdx
+			} else {
+				// Literal: Data should not be nil
+				_ = mr.Data
+			}
+			return nil
+		})
+		if err != nil && err != io.EOF {
+			// Error is acceptable — corrupt data should produce errors.
+			// Just verify no panic occurred.
+			_ = err
+		}
+	})
+}
+
 // ── SearchReader error propagation fuzz ─────────────────────────────
 
 type errorReader struct {

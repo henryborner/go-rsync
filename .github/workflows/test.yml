@@ -32,6 +32,7 @@ jobs:
           go test -fuzz=FuzzChecksum1Parity -fuzztime=10s
           go test -fuzz=FuzzWireSignature -fuzztime=5s
           go test -fuzz=FuzzWireInstructions -fuzztime=5s
+          go test -fuzz=FuzzWireInstructionsCorrupt -fuzztime=5s
 
   # ── amd64 benchmark (AVX2/SSE2 vs pure Go) ──
   bench-amd64:
@@ -76,6 +77,7 @@ jobs:
           go test -fuzz=FuzzChecksum1Parity -fuzztime=10s
           go test -fuzz=FuzzWireSignature -fuzztime=5s
           go test -fuzz=FuzzWireInstructions -fuzztime=5s
+          go test -fuzz=FuzzWireInstructionsCorrupt -fuzztime=5s
 
       - name: Benchmark ARM64
         run: |
