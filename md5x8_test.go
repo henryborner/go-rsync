@@ -154,6 +154,83 @@ func TestMD5x8_LastBlockShorter(t *testing.T) {
 	}
 }
 
+// TestMD5x8_SlowPath_DifferentTails forces the md5FinalizeScalar path
+// by creating 8 blocks with different tail lengths after the common minimum.
+func TestMD5x8_SlowPath_DifferentTails(t *testing.T) {
+	if !md5x8available() {
+		t.Skip("AVX2 not available")
+	}
+
+	// Use 7 blocks of 700B + 1 block of 640B.
+	// minFullChunks = 10 for all. Tails: 60, 60, ..., 0 → different → slow path.
+	lengthsList := []int{700, 700, 700, 700, 700, 700, 700, 640}
+
+	data := make([]byte, 0)
+	var offsets, lengths [8]int
+	off := 0
+	for b, ln := range lengthsList {
+		offsets[b] = off
+		lengths[b] = ln
+		off += ln
+	}
+	data = make([]byte, off)
+	for i := range data {
+		data[i] = byte((i * 7) % 251)
+	}
+
+	var outAVX2 [8][16]byte
+	md5Hash8wayAVX2(data, offsets, lengths, &outAVX2)
+
+	// Also verify against pure Go reference
+	var outRef [8][16]byte
+	md5Hash8wayGo(data, offsets, lengths, &outRef)
+
+	for b, ln := range lengthsList {
+		expected := md5.Sum(data[offsets[b] : offsets[b]+ln])
+		if outAVX2[b] != expected {
+			t.Errorf("AVX2 lane %d (len=%d) vs md5.Sum:\n  got:  %x\n  want: %x", b, ln, outAVX2[b], expected)
+		}
+		if outAVX2[b] != outRef[b] {
+			t.Errorf("AVX2 lane %d (len=%d) vs Go ref:\n  AVX2: %x\n  Go:   %x", b, ln, outAVX2[b], outRef[b])
+		}
+	}
+}
+
+// TestMD5x8_SlowPath_MixedChunks tests the slow path when some blocks have
+// additional full 64B chunks beyond the common minimum.
+func TestMD5x8_SlowPath_MixedChunks(t *testing.T) {
+	if !md5x8available() {
+		t.Skip("AVX2 not available")
+	}
+
+	// 6 blocks of 700B, 1 of 764B, 1 of 640B
+	// minFullChunks = 10 (640/64=10). Block 7 (764B) has 764-640=124≥64 → slow path.
+	lengthsList := []int{700, 700, 700, 700, 700, 700, 764, 640}
+
+	data := make([]byte, 0)
+	var offsets, lengths [8]int
+	off := 0
+	for b, ln := range lengthsList {
+		offsets[b] = off
+		lengths[b] = ln
+		off += ln
+	}
+	data = make([]byte, off)
+	for i := range data {
+		data[i] = byte((i*11 + 3) % 251)
+	}
+
+	var outAVX2 [8][16]byte
+	md5Hash8wayAVX2(data, offsets, lengths, &outAVX2)
+
+	for b, ln := range lengthsList {
+		expected := md5.Sum(data[offsets[b] : offsets[b]+ln])
+		if outAVX2[b] != expected {
+			t.Errorf("AVX2 lane %d (len=%d) vs md5.Sum:\n  got:  %x\n  want: %x", b, ln, outAVX2[b], expected)
+		}
+	}
+}
+
 // ---------------------------------------------------------------------------
 // Benchmark: compare 1×8 scalar (8 sequential md5.Sum calls) vs 8-way SIMD
 // ---------------------------------------------------------------------------
