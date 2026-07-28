@@ -35,13 +35,8 @@ func main() {
 	w("")
 	// State: V0=a, V1=b, V2=c, V3=d (roles rotate per step)
 	// Saved: V4=sa, V5=sb, V6=sc, V7=sd
-	// Const: V8=allones (for NOT emulation)
 	// Work:  V9,V10=F temps, V11=rotl left, V12=F|rotl, V13=X[g], V14=accum, V15=T
 	w("\tVLD1 0(R1), [V0.S4, V1.S4, V2.S4, V3.S4]")
-	w("")
-	w("\t// Load all-ones into V8 (for VBIC/VORN emulation)")
-	w("\tMOVD $allones<>(SB), R2")
-	w("\tVLD1 (R2), [V8.S4]")
 	w("")
 	w("\t// Save initial state for final add-back")
 	w("\tVMOV V0.B16, V4.B16")
@@ -116,24 +111,33 @@ func main() {
 		w("\t// Step %d: R%d g=%d s=%d T=0x%08x  (a=%s b=%s c=%s d=%s)",
 			i, rnd+1, g, s, T[i], ra, rb, rc, rd)
 
+		// WORD encoding helpers: use p[0..3] (physical V0..V3 indexes)
+		bicWord := func(rd, rn, rm int) string {
+			return fmt.Sprintf("$0x%08x", 0x4E601C00|(rm<<16)|(rn<<5)|rd)
+		}
+		ornWord := func(rd, rn, rm int) string {
+			return fmt.Sprintf("$0x%08x", 0x4EE01C00|(rm<<16)|(rn<<5)|rd)
+		}
+
+		physB := p[1] // physical register for b
+		physC := p[2] // physical register for c
+		physD := p[3] // physical register for d
+
 		switch rnd {
-		case 0: // F = (b&c) | (~b&d)
+		case 0: // F = (b&c) | (~b&d) = (b&c) | (d&~b)
 			w("\tVAND %s.B16, %s.B16, V9.B16   // b & c", rb, rc)
-			w("\tVEOR V8.B16, %s.B16, V10.B16  // ~b", rb)
-			w("\tVAND V10.B16, %s.B16, V10.B16 // ~b & d", rd)
+			w("\tWORD %s                  // V10 = d & ~b (VBIC)", bicWord(10, physD, physB))
 			w("\tVORR V9.B16, V10.B16, V12.B16  // F")
 		case 1: // F = (b&d) | (c&~d)
 			w("\tVAND %s.B16, %s.B16, V9.B16   // b & d", rb, rd)
-			w("\tVEOR V8.B16, %s.B16, V10.B16  // ~d", rd)
-			w("\tVAND %s.B16, V10.B16, V10.B16 // c & ~d", rc)
+			w("\tWORD %s                  // V10 = c & ~d (VBIC)", bicWord(10, physC, physD))
 			w("\tVORR V9.B16, V10.B16, V12.B16  // F")
 		case 2: // F = b ^ c ^ d
 			w("\tVEOR %s.B16, %s.B16, V12.B16", rb, rc)
 			w("\tVEOR %s.B16, V12.B16, V12.B16", rd)
 		case 3: // F = c ^ (b | ~d)
-			w("\tVEOR V8.B16, %s.B16, V9.B16   // ~d", rd)
-			w("\tVORR %s.B16, V9.B16, V9.B16   // b | ~d", rb)
-			w("\tVEOR %s.B16, V9.B16, V12.B16  // F", rc)
+			w("\tWORD %s                  // V9 = b | ~d (VORN)", ornWord(9, physB, physD))
+			w("\tVEOR %s.B16, V9.B16, V12.B16  // F = c ^ (b|~d)", rc)
 		}
 
 		// a + X + T
@@ -168,12 +172,6 @@ func main() {
 	w("")
 	w("\tVST1 [V0.S4, V1.S4, V2.S4, V3.S4], 0(R1)")
 	w("\tRET")
-	w("")
-
-	// Data
-	w("DATA allones<>+0(SB)/8,  $0xFFFFFFFFFFFFFFFF")
-	w("DATA allones<>+8(SB)/8,  $0xFFFFFFFFFFFFFFFF")
-	w("GLOBL allones<>(SB), RODATA|NOPTR, $16")
 	w("")
 
 	for i, t := range T {

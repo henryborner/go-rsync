@@ -12,10 +12,6 @@ TEXT ·md5x4core(SB), NOSPLIT, $0-16
 
 	VLD1 0(R1), [V0.S4, V1.S4, V2.S4, V3.S4]
 
-	// Load all-ones into V8 (for VBIC/VORN emulation)
-	MOVD $allones<>(SB), R2
-	VLD1 (R2), [V8.S4]
-
 	// Save initial state for final add-back
 	VMOV V0.B16, V4.B16
 	VMOV V1.B16, V5.B16
@@ -27,8 +23,7 @@ TEXT ·md5x4core(SB), NOSPLIT, $0-16
 
 	// Step 0: R1 g=0 s=7 T=0xd76aa478  (a=V0 b=V1 c=V2 d=V3)
 	VAND V1.B16, V2.B16, V9.B16   // b & c
-	VEOR V8.B16, V1.B16, V10.B16  // ~b
-	VAND V10.B16, V3.B16, V10.B16 // ~b & d
+	WORD $0x4e611c6a                  // V10 = d & ~b (VBIC)
 	VORR V9.B16, V10.B16, V12.B16  // F
 	VADD V0.S4, V13.S4, V14.S4   // a + X
 	MOVD $T_0<>(SB), R3
@@ -44,8 +39,7 @@ TEXT ·md5x4core(SB), NOSPLIT, $0-16
 
 	// Step 1: R1 g=1 s=12 T=0xe8c7b756  (a=V3 b=V0 c=V1 d=V2)
 	VAND V0.B16, V1.B16, V9.B16   // b & c
-	VEOR V8.B16, V0.B16, V10.B16  // ~b
-	VAND V10.B16, V2.B16, V10.B16 // ~b & d
+	WORD $0x4e601c4a                  // V10 = d & ~b (VBIC)
 	VORR V9.B16, V10.B16, V12.B16  // F
 	VADD V3.S4, V13.S4, V14.S4   // a + X
 	MOVD $T_1<>(SB), R3
@@ -61,8 +55,7 @@ TEXT ·md5x4core(SB), NOSPLIT, $0-16
 
 	// Step 2: R1 g=2 s=17 T=0x242070db  (a=V2 b=V3 c=V0 d=V1)
 	VAND V3.B16, V0.B16, V9.B16   // b & c
-	VEOR V8.B16, V3.B16, V10.B16  // ~b
-	VAND V10.B16, V1.B16, V10.B16 // ~b & d
+	WORD $0x4e631c2a                  // V10 = d & ~b (VBIC)
 	VORR V9.B16, V10.B16, V12.B16  // F
 	VADD V2.S4, V13.S4, V14.S4   // a + X
 	MOVD $T_2<>(SB), R3
@@ -78,8 +71,7 @@ TEXT ·md5x4core(SB), NOSPLIT, $0-16
 
 	// Step 3: R1 g=3 s=22 T=0xc1bdceee  (a=V1 b=V2 c=V3 d=V0)
 	VAND V2.B16, V3.B16, V9.B16   // b & c
-	VEOR V8.B16, V2.B16, V10.B16  // ~b
-	VAND V10.B16, V0.B16, V10.B16 // ~b & d
+	WORD $0x4e621c0a                  // V10 = d & ~b (VBIC)
 	VORR V9.B16, V10.B16, V12.B16  // F
 	VADD V1.S4, V13.S4, V14.S4   // a + X
 	MOVD $T_3<>(SB), R3
@@ -95,8 +87,7 @@ TEXT ·md5x4core(SB), NOSPLIT, $0-16
 
 	// Step 4: R1 g=4 s=7 T=0xf57c0faf  (a=V0 b=V1 c=V2 d=V3)
 	VAND V1.B16, V2.B16, V9.B16   // b & c
-	VEOR V8.B16, V1.B16, V10.B16  // ~b
-	VAND V10.B16, V3.B16, V10.B16 // ~b & d
+	WORD $0x4e611c6a                  // V10 = d & ~b (VBIC)
 	VORR V9.B16, V10.B16, V12.B16  // F
 	VADD V0.S4, V13.S4, V14.S4   // a + X
 	MOVD $T_4<>(SB), R3
@@ -112,8 +103,7 @@ TEXT ·md5x4core(SB), NOSPLIT, $0-16
 
 	// Step 5: R1 g=5 s=12 T=0x4787c62a  (a=V3 b=V0 c=V1 d=V2)
 	VAND V0.B16, V1.B16, V9.B16   // b & c
-	VEOR V8.B16, V0.B16, V10.B16  // ~b
-	VAND V10.B16, V2.B16, V10.B16 // ~b & d
+	WORD $0x4e601c4a                  // V10 = d & ~b (VBIC)
 	VORR V9.B16, V10.B16, V12.B16  // F
 	VADD V3.S4, V13.S4, V14.S4   // a + X
 	MOVD $T_5<>(SB), R3
@@ -129,8 +119,7 @@ TEXT ·md5x4core(SB), NOSPLIT, $0-16
 
 	// Step 6: R1 g=6 s=17 T=0xa8304613  (a=V2 b=V3 c=V0 d=V1)
 	VAND V3.B16, V0.B16, V9.B16   // b & c
-	VEOR V8.B16, V3.B16, V10.B16  // ~b
-	VAND V10.B16, V1.B16, V10.B16 // ~b & d
+	WORD $0x4e631c2a                  // V10 = d & ~b (VBIC)
 	VORR V9.B16, V10.B16, V12.B16  // F
 	VADD V2.S4, V13.S4, V14.S4   // a + X
 	MOVD $T_6<>(SB), R3
@@ -146,8 +135,7 @@ TEXT ·md5x4core(SB), NOSPLIT, $0-16
 
 	// Step 7: R1 g=7 s=22 T=0xfd469501  (a=V1 b=V2 c=V3 d=V0)
 	VAND V2.B16, V3.B16, V9.B16   // b & c
-	VEOR V8.B16, V2.B16, V10.B16  // ~b
-	VAND V10.B16, V0.B16, V10.B16 // ~b & d
+	WORD $0x4e621c0a                  // V10 = d & ~b (VBIC)
 	VORR V9.B16, V10.B16, V12.B16  // F
 	VADD V1.S4, V13.S4, V14.S4   // a + X
 	MOVD $T_7<>(SB), R3
@@ -163,8 +151,7 @@ TEXT ·md5x4core(SB), NOSPLIT, $0-16
 
 	// Step 8: R1 g=8 s=7 T=0x698098d8  (a=V0 b=V1 c=V2 d=V3)
 	VAND V1.B16, V2.B16, V9.B16   // b & c
-	VEOR V8.B16, V1.B16, V10.B16  // ~b
-	VAND V10.B16, V3.B16, V10.B16 // ~b & d
+	WORD $0x4e611c6a                  // V10 = d & ~b (VBIC)
 	VORR V9.B16, V10.B16, V12.B16  // F
 	VADD V0.S4, V13.S4, V14.S4   // a + X
 	MOVD $T_8<>(SB), R3
@@ -180,8 +167,7 @@ TEXT ·md5x4core(SB), NOSPLIT, $0-16
 
 	// Step 9: R1 g=9 s=12 T=0x8b44f7af  (a=V3 b=V0 c=V1 d=V2)
 	VAND V0.B16, V1.B16, V9.B16   // b & c
-	VEOR V8.B16, V0.B16, V10.B16  // ~b
-	VAND V10.B16, V2.B16, V10.B16 // ~b & d
+	WORD $0x4e601c4a                  // V10 = d & ~b (VBIC)
 	VORR V9.B16, V10.B16, V12.B16  // F
 	VADD V3.S4, V13.S4, V14.S4   // a + X
 	MOVD $T_9<>(SB), R3
@@ -197,8 +183,7 @@ TEXT ·md5x4core(SB), NOSPLIT, $0-16
 
 	// Step 10: R1 g=10 s=17 T=0xffff5bb1  (a=V2 b=V3 c=V0 d=V1)
 	VAND V3.B16, V0.B16, V9.B16   // b & c
-	VEOR V8.B16, V3.B16, V10.B16  // ~b
-	VAND V10.B16, V1.B16, V10.B16 // ~b & d
+	WORD $0x4e631c2a                  // V10 = d & ~b (VBIC)
 	VORR V9.B16, V10.B16, V12.B16  // F
 	VADD V2.S4, V13.S4, V14.S4   // a + X
 	MOVD $T_10<>(SB), R3
@@ -214,8 +199,7 @@ TEXT ·md5x4core(SB), NOSPLIT, $0-16
 
 	// Step 11: R1 g=11 s=22 T=0x895cd7be  (a=V1 b=V2 c=V3 d=V0)
 	VAND V2.B16, V3.B16, V9.B16   // b & c
-	VEOR V8.B16, V2.B16, V10.B16  // ~b
-	VAND V10.B16, V0.B16, V10.B16 // ~b & d
+	WORD $0x4e621c0a                  // V10 = d & ~b (VBIC)
 	VORR V9.B16, V10.B16, V12.B16  // F
 	VADD V1.S4, V13.S4, V14.S4   // a + X
 	MOVD $T_11<>(SB), R3
@@ -231,8 +215,7 @@ TEXT ·md5x4core(SB), NOSPLIT, $0-16
 
 	// Step 12: R1 g=12 s=7 T=0x6b901122  (a=V0 b=V1 c=V2 d=V3)
 	VAND V1.B16, V2.B16, V9.B16   // b & c
-	VEOR V8.B16, V1.B16, V10.B16  // ~b
-	VAND V10.B16, V3.B16, V10.B16 // ~b & d
+	WORD $0x4e611c6a                  // V10 = d & ~b (VBIC)
 	VORR V9.B16, V10.B16, V12.B16  // F
 	VADD V0.S4, V13.S4, V14.S4   // a + X
 	MOVD $T_12<>(SB), R3
@@ -248,8 +231,7 @@ TEXT ·md5x4core(SB), NOSPLIT, $0-16
 
 	// Step 13: R1 g=13 s=12 T=0xfd987193  (a=V3 b=V0 c=V1 d=V2)
 	VAND V0.B16, V1.B16, V9.B16   // b & c
-	VEOR V8.B16, V0.B16, V10.B16  // ~b
-	VAND V10.B16, V2.B16, V10.B16 // ~b & d
+	WORD $0x4e601c4a                  // V10 = d & ~b (VBIC)
 	VORR V9.B16, V10.B16, V12.B16  // F
 	VADD V3.S4, V13.S4, V14.S4   // a + X
 	MOVD $T_13<>(SB), R3
@@ -265,8 +247,7 @@ TEXT ·md5x4core(SB), NOSPLIT, $0-16
 
 	// Step 14: R1 g=14 s=17 T=0xa679438e  (a=V2 b=V3 c=V0 d=V1)
 	VAND V3.B16, V0.B16, V9.B16   // b & c
-	VEOR V8.B16, V3.B16, V10.B16  // ~b
-	VAND V10.B16, V1.B16, V10.B16 // ~b & d
+	WORD $0x4e631c2a                  // V10 = d & ~b (VBIC)
 	VORR V9.B16, V10.B16, V12.B16  // F
 	VADD V2.S4, V13.S4, V14.S4   // a + X
 	MOVD $T_14<>(SB), R3
@@ -282,8 +263,7 @@ TEXT ·md5x4core(SB), NOSPLIT, $0-16
 
 	// Step 15: R1 g=15 s=22 T=0x49b40821  (a=V1 b=V2 c=V3 d=V0)
 	VAND V2.B16, V3.B16, V9.B16   // b & c
-	VEOR V8.B16, V2.B16, V10.B16  // ~b
-	VAND V10.B16, V0.B16, V10.B16 // ~b & d
+	WORD $0x4e621c0a                  // V10 = d & ~b (VBIC)
 	VORR V9.B16, V10.B16, V12.B16  // F
 	VADD V1.S4, V13.S4, V14.S4   // a + X
 	MOVD $T_15<>(SB), R3
@@ -299,8 +279,7 @@ TEXT ·md5x4core(SB), NOSPLIT, $0-16
 
 	// Step 16: R2 g=1 s=5 T=0xf61e2562  (a=V0 b=V1 c=V2 d=V3)
 	VAND V1.B16, V3.B16, V9.B16   // b & d
-	VEOR V8.B16, V3.B16, V10.B16  // ~d
-	VAND V2.B16, V10.B16, V10.B16 // c & ~d
+	WORD $0x4e631c4a                  // V10 = c & ~d (VBIC)
 	VORR V9.B16, V10.B16, V12.B16  // F
 	VADD V0.S4, V13.S4, V14.S4   // a + X
 	MOVD $T_16<>(SB), R3
@@ -316,8 +295,7 @@ TEXT ·md5x4core(SB), NOSPLIT, $0-16
 
 	// Step 17: R2 g=6 s=9 T=0xc040b340  (a=V3 b=V0 c=V1 d=V2)
 	VAND V0.B16, V2.B16, V9.B16   // b & d
-	VEOR V8.B16, V2.B16, V10.B16  // ~d
-	VAND V1.B16, V10.B16, V10.B16 // c & ~d
+	WORD $0x4e621c2a                  // V10 = c & ~d (VBIC)
 	VORR V9.B16, V10.B16, V12.B16  // F
 	VADD V3.S4, V13.S4, V14.S4   // a + X
 	MOVD $T_17<>(SB), R3
@@ -333,8 +311,7 @@ TEXT ·md5x4core(SB), NOSPLIT, $0-16
 
 	// Step 18: R2 g=11 s=14 T=0x265e5a51  (a=V2 b=V3 c=V0 d=V1)
 	VAND V3.B16, V1.B16, V9.B16   // b & d
-	VEOR V8.B16, V1.B16, V10.B16  // ~d
-	VAND V0.B16, V10.B16, V10.B16 // c & ~d
+	WORD $0x4e611c0a                  // V10 = c & ~d (VBIC)
 	VORR V9.B16, V10.B16, V12.B16  // F
 	VADD V2.S4, V13.S4, V14.S4   // a + X
 	MOVD $T_18<>(SB), R3
@@ -350,8 +327,7 @@ TEXT ·md5x4core(SB), NOSPLIT, $0-16
 
 	// Step 19: R2 g=0 s=20 T=0xe9b6c7aa  (a=V1 b=V2 c=V3 d=V0)
 	VAND V2.B16, V0.B16, V9.B16   // b & d
-	VEOR V8.B16, V0.B16, V10.B16  // ~d
-	VAND V3.B16, V10.B16, V10.B16 // c & ~d
+	WORD $0x4e601c6a                  // V10 = c & ~d (VBIC)
 	VORR V9.B16, V10.B16, V12.B16  // F
 	VADD V1.S4, V13.S4, V14.S4   // a + X
 	MOVD $T_19<>(SB), R3
@@ -367,8 +343,7 @@ TEXT ·md5x4core(SB), NOSPLIT, $0-16
 
 	// Step 20: R2 g=5 s=5 T=0xd62f105d  (a=V0 b=V1 c=V2 d=V3)
 	VAND V1.B16, V3.B16, V9.B16   // b & d
-	VEOR V8.B16, V3.B16, V10.B16  // ~d
-	VAND V2.B16, V10.B16, V10.B16 // c & ~d
+	WORD $0x4e631c4a                  // V10 = c & ~d (VBIC)
 	VORR V9.B16, V10.B16, V12.B16  // F
 	VADD V0.S4, V13.S4, V14.S4   // a + X
 	MOVD $T_20<>(SB), R3
@@ -384,8 +359,7 @@ TEXT ·md5x4core(SB), NOSPLIT, $0-16
 
 	// Step 21: R2 g=10 s=9 T=0x02441453  (a=V3 b=V0 c=V1 d=V2)
 	VAND V0.B16, V2.B16, V9.B16   // b & d
-	VEOR V8.B16, V2.B16, V10.B16  // ~d
-	VAND V1.B16, V10.B16, V10.B16 // c & ~d
+	WORD $0x4e621c2a                  // V10 = c & ~d (VBIC)
 	VORR V9.B16, V10.B16, V12.B16  // F
 	VADD V3.S4, V13.S4, V14.S4   // a + X
 	MOVD $T_21<>(SB), R3
@@ -401,8 +375,7 @@ TEXT ·md5x4core(SB), NOSPLIT, $0-16
 
 	// Step 22: R2 g=15 s=14 T=0xd8a1e681  (a=V2 b=V3 c=V0 d=V1)
 	VAND V3.B16, V1.B16, V9.B16   // b & d
-	VEOR V8.B16, V1.B16, V10.B16  // ~d
-	VAND V0.B16, V10.B16, V10.B16 // c & ~d
+	WORD $0x4e611c0a                  // V10 = c & ~d (VBIC)
 	VORR V9.B16, V10.B16, V12.B16  // F
 	VADD V2.S4, V13.S4, V14.S4   // a + X
 	MOVD $T_22<>(SB), R3
@@ -418,8 +391,7 @@ TEXT ·md5x4core(SB), NOSPLIT, $0-16
 
 	// Step 23: R2 g=4 s=20 T=0xe7d3fbc8  (a=V1 b=V2 c=V3 d=V0)
 	VAND V2.B16, V0.B16, V9.B16   // b & d
-	VEOR V8.B16, V0.B16, V10.B16  // ~d
-	VAND V3.B16, V10.B16, V10.B16 // c & ~d
+	WORD $0x4e601c6a                  // V10 = c & ~d (VBIC)
 	VORR V9.B16, V10.B16, V12.B16  // F
 	VADD V1.S4, V13.S4, V14.S4   // a + X
 	MOVD $T_23<>(SB), R3
@@ -435,8 +407,7 @@ TEXT ·md5x4core(SB), NOSPLIT, $0-16
 
 	// Step 24: R2 g=9 s=5 T=0x21e1cde6  (a=V0 b=V1 c=V2 d=V3)
 	VAND V1.B16, V3.B16, V9.B16   // b & d
-	VEOR V8.B16, V3.B16, V10.B16  // ~d
-	VAND V2.B16, V10.B16, V10.B16 // c & ~d
+	WORD $0x4e631c4a                  // V10 = c & ~d (VBIC)
 	VORR V9.B16, V10.B16, V12.B16  // F
 	VADD V0.S4, V13.S4, V14.S4   // a + X
 	MOVD $T_24<>(SB), R3
@@ -452,8 +423,7 @@ TEXT ·md5x4core(SB), NOSPLIT, $0-16
 
 	// Step 25: R2 g=14 s=9 T=0xc33707d6  (a=V3 b=V0 c=V1 d=V2)
 	VAND V0.B16, V2.B16, V9.B16   // b & d
-	VEOR V8.B16, V2.B16, V10.B16  // ~d
-	VAND V1.B16, V10.B16, V10.B16 // c & ~d
+	WORD $0x4e621c2a                  // V10 = c & ~d (VBIC)
 	VORR V9.B16, V10.B16, V12.B16  // F
 	VADD V3.S4, V13.S4, V14.S4   // a + X
 	MOVD $T_25<>(SB), R3
@@ -469,8 +439,7 @@ TEXT ·md5x4core(SB), NOSPLIT, $0-16
 
 	// Step 26: R2 g=3 s=14 T=0xf4d50d87  (a=V2 b=V3 c=V0 d=V1)
 	VAND V3.B16, V1.B16, V9.B16   // b & d
-	VEOR V8.B16, V1.B16, V10.B16  // ~d
-	VAND V0.B16, V10.B16, V10.B16 // c & ~d
+	WORD $0x4e611c0a                  // V10 = c & ~d (VBIC)
 	VORR V9.B16, V10.B16, V12.B16  // F
 	VADD V2.S4, V13.S4, V14.S4   // a + X
 	MOVD $T_26<>(SB), R3
@@ -486,8 +455,7 @@ TEXT ·md5x4core(SB), NOSPLIT, $0-16
 
 	// Step 27: R2 g=8 s=20 T=0x455a14ed  (a=V1 b=V2 c=V3 d=V0)
 	VAND V2.B16, V0.B16, V9.B16   // b & d
-	VEOR V8.B16, V0.B16, V10.B16  // ~d
-	VAND V3.B16, V10.B16, V10.B16 // c & ~d
+	WORD $0x4e601c6a                  // V10 = c & ~d (VBIC)
 	VORR V9.B16, V10.B16, V12.B16  // F
 	VADD V1.S4, V13.S4, V14.S4   // a + X
 	MOVD $T_27<>(SB), R3
@@ -503,8 +471,7 @@ TEXT ·md5x4core(SB), NOSPLIT, $0-16
 
 	// Step 28: R2 g=13 s=5 T=0xa9e3e905  (a=V0 b=V1 c=V2 d=V3)
 	VAND V1.B16, V3.B16, V9.B16   // b & d
-	VEOR V8.B16, V3.B16, V10.B16  // ~d
-	VAND V2.B16, V10.B16, V10.B16 // c & ~d
+	WORD $0x4e631c4a                  // V10 = c & ~d (VBIC)
 	VORR V9.B16, V10.B16, V12.B16  // F
 	VADD V0.S4, V13.S4, V14.S4   // a + X
 	MOVD $T_28<>(SB), R3
@@ -520,8 +487,7 @@ TEXT ·md5x4core(SB), NOSPLIT, $0-16
 
 	// Step 29: R2 g=2 s=9 T=0xfcefa3f8  (a=V3 b=V0 c=V1 d=V2)
 	VAND V0.B16, V2.B16, V9.B16   // b & d
-	VEOR V8.B16, V2.B16, V10.B16  // ~d
-	VAND V1.B16, V10.B16, V10.B16 // c & ~d
+	WORD $0x4e621c2a                  // V10 = c & ~d (VBIC)
 	VORR V9.B16, V10.B16, V12.B16  // F
 	VADD V3.S4, V13.S4, V14.S4   // a + X
 	MOVD $T_29<>(SB), R3
@@ -537,8 +503,7 @@ TEXT ·md5x4core(SB), NOSPLIT, $0-16
 
 	// Step 30: R2 g=7 s=14 T=0x676f02d9  (a=V2 b=V3 c=V0 d=V1)
 	VAND V3.B16, V1.B16, V9.B16   // b & d
-	VEOR V8.B16, V1.B16, V10.B16  // ~d
-	VAND V0.B16, V10.B16, V10.B16 // c & ~d
+	WORD $0x4e611c0a                  // V10 = c & ~d (VBIC)
 	VORR V9.B16, V10.B16, V12.B16  // F
 	VADD V2.S4, V13.S4, V14.S4   // a + X
 	MOVD $T_30<>(SB), R3
@@ -554,8 +519,7 @@ TEXT ·md5x4core(SB), NOSPLIT, $0-16
 
 	// Step 31: R2 g=12 s=20 T=0x8d2a4c8a  (a=V1 b=V2 c=V3 d=V0)
 	VAND V2.B16, V0.B16, V9.B16   // b & d
-	VEOR V8.B16, V0.B16, V10.B16  // ~d
-	VAND V3.B16, V10.B16, V10.B16 // c & ~d
+	WORD $0x4e601c6a                  // V10 = c & ~d (VBIC)
 	VORR V9.B16, V10.B16, V12.B16  // F
 	VADD V1.S4, V13.S4, V14.S4   // a + X
 	MOVD $T_31<>(SB), R3
@@ -810,9 +774,8 @@ TEXT ·md5x4core(SB), NOSPLIT, $0-16
 	VADD V2.S4, V12.S4, V1.S4
 
 	// Step 48: R4 g=0 s=6 T=0xf4292244  (a=V0 b=V1 c=V2 d=V3)
-	VEOR V8.B16, V3.B16, V9.B16   // ~d
-	VORR V1.B16, V9.B16, V9.B16   // b | ~d
-	VEOR V2.B16, V9.B16, V12.B16  // F
+	WORD $0x4ee31c29                  // V9 = b | ~d (VORN)
+	VEOR V2.B16, V9.B16, V12.B16  // F = c ^ (b|~d)
 	VADD V0.S4, V13.S4, V14.S4   // a + X
 	MOVD $T_48<>(SB), R3
 	VLD1 (R3), [V15.S4]
@@ -826,9 +789,8 @@ TEXT ·md5x4core(SB), NOSPLIT, $0-16
 	VADD V1.S4, V12.S4, V0.S4
 
 	// Step 49: R4 g=7 s=10 T=0x432aff97  (a=V3 b=V0 c=V1 d=V2)
-	VEOR V8.B16, V2.B16, V9.B16   // ~d
-	VORR V0.B16, V9.B16, V9.B16   // b | ~d
-	VEOR V1.B16, V9.B16, V12.B16  // F
+	WORD $0x4ee21c09                  // V9 = b | ~d (VORN)
+	VEOR V1.B16, V9.B16, V12.B16  // F = c ^ (b|~d)
 	VADD V3.S4, V13.S4, V14.S4   // a + X
 	MOVD $T_49<>(SB), R3
 	VLD1 (R3), [V15.S4]
@@ -842,9 +804,8 @@ TEXT ·md5x4core(SB), NOSPLIT, $0-16
 	VADD V0.S4, V12.S4, V3.S4
 
 	// Step 50: R4 g=14 s=15 T=0xab9423a7  (a=V2 b=V3 c=V0 d=V1)
-	VEOR V8.B16, V1.B16, V9.B16   // ~d
-	VORR V3.B16, V9.B16, V9.B16   // b | ~d
-	VEOR V0.B16, V9.B16, V12.B16  // F
+	WORD $0x4ee11c69                  // V9 = b | ~d (VORN)
+	VEOR V0.B16, V9.B16, V12.B16  // F = c ^ (b|~d)
 	VADD V2.S4, V13.S4, V14.S4   // a + X
 	MOVD $T_50<>(SB), R3
 	VLD1 (R3), [V15.S4]
@@ -858,9 +819,8 @@ TEXT ·md5x4core(SB), NOSPLIT, $0-16
 	VADD V3.S4, V12.S4, V2.S4
 
 	// Step 51: R4 g=5 s=21 T=0xfc93a039  (a=V1 b=V2 c=V3 d=V0)
-	VEOR V8.B16, V0.B16, V9.B16   // ~d
-	VORR V2.B16, V9.B16, V9.B16   // b | ~d
-	VEOR V3.B16, V9.B16, V12.B16  // F
+	WORD $0x4ee01c49                  // V9 = b | ~d (VORN)
+	VEOR V3.B16, V9.B16, V12.B16  // F = c ^ (b|~d)
 	VADD V1.S4, V13.S4, V14.S4   // a + X
 	MOVD $T_51<>(SB), R3
 	VLD1 (R3), [V15.S4]
@@ -874,9 +834,8 @@ TEXT ·md5x4core(SB), NOSPLIT, $0-16
 	VADD V2.S4, V12.S4, V1.S4
 
 	// Step 52: R4 g=12 s=6 T=0x655b59c3  (a=V0 b=V1 c=V2 d=V3)
-	VEOR V8.B16, V3.B16, V9.B16   // ~d
-	VORR V1.B16, V9.B16, V9.B16   // b | ~d
-	VEOR V2.B16, V9.B16, V12.B16  // F
+	WORD $0x4ee31c29                  // V9 = b | ~d (VORN)
+	VEOR V2.B16, V9.B16, V12.B16  // F = c ^ (b|~d)
 	VADD V0.S4, V13.S4, V14.S4   // a + X
 	MOVD $T_52<>(SB), R3
 	VLD1 (R3), [V15.S4]
@@ -890,9 +849,8 @@ TEXT ·md5x4core(SB), NOSPLIT, $0-16
 	VADD V1.S4, V12.S4, V0.S4
 
 	// Step 53: R4 g=3 s=10 T=0x8f0ccc92  (a=V3 b=V0 c=V1 d=V2)
-	VEOR V8.B16, V2.B16, V9.B16   // ~d
-	VORR V0.B16, V9.B16, V9.B16   // b | ~d
-	VEOR V1.B16, V9.B16, V12.B16  // F
+	WORD $0x4ee21c09                  // V9 = b | ~d (VORN)
+	VEOR V1.B16, V9.B16, V12.B16  // F = c ^ (b|~d)
 	VADD V3.S4, V13.S4, V14.S4   // a + X
 	MOVD $T_53<>(SB), R3
 	VLD1 (R3), [V15.S4]
@@ -906,9 +864,8 @@ TEXT ·md5x4core(SB), NOSPLIT, $0-16
 	VADD V0.S4, V12.S4, V3.S4
 
 	// Step 54: R4 g=10 s=15 T=0xffeff47d  (a=V2 b=V3 c=V0 d=V1)
-	VEOR V8.B16, V1.B16, V9.B16   // ~d
-	VORR V3.B16, V9.B16, V9.B16   // b | ~d
-	VEOR V0.B16, V9.B16, V12.B16  // F
+	WORD $0x4ee11c69                  // V9 = b | ~d (VORN)
+	VEOR V0.B16, V9.B16, V12.B16  // F = c ^ (b|~d)
 	VADD V2.S4, V13.S4, V14.S4   // a + X
 	MOVD $T_54<>(SB), R3
 	VLD1 (R3), [V15.S4]
@@ -922,9 +879,8 @@ TEXT ·md5x4core(SB), NOSPLIT, $0-16
 	VADD V3.S4, V12.S4, V2.S4
 
 	// Step 55: R4 g=1 s=21 T=0x85845dd1  (a=V1 b=V2 c=V3 d=V0)
-	VEOR V8.B16, V0.B16, V9.B16   // ~d
-	VORR V2.B16, V9.B16, V9.B16   // b | ~d
-	VEOR V3.B16, V9.B16, V12.B16  // F
+	WORD $0x4ee01c49                  // V9 = b | ~d (VORN)
+	VEOR V3.B16, V9.B16, V12.B16  // F = c ^ (b|~d)
 	VADD V1.S4, V13.S4, V14.S4   // a + X
 	MOVD $T_55<>(SB), R3
 	VLD1 (R3), [V15.S4]
@@ -938,9 +894,8 @@ TEXT ·md5x4core(SB), NOSPLIT, $0-16
 	VADD V2.S4, V12.S4, V1.S4
 
 	// Step 56: R4 g=8 s=6 T=0x6fa87e4f  (a=V0 b=V1 c=V2 d=V3)
-	VEOR V8.B16, V3.B16, V9.B16   // ~d
-	VORR V1.B16, V9.B16, V9.B16   // b | ~d
-	VEOR V2.B16, V9.B16, V12.B16  // F
+	WORD $0x4ee31c29                  // V9 = b | ~d (VORN)
+	VEOR V2.B16, V9.B16, V12.B16  // F = c ^ (b|~d)
 	VADD V0.S4, V13.S4, V14.S4   // a + X
 	MOVD $T_56<>(SB), R3
 	VLD1 (R3), [V15.S4]
@@ -954,9 +909,8 @@ TEXT ·md5x4core(SB), NOSPLIT, $0-16
 	VADD V1.S4, V12.S4, V0.S4
 
 	// Step 57: R4 g=15 s=10 T=0xfe2ce6e0  (a=V3 b=V0 c=V1 d=V2)
-	VEOR V8.B16, V2.B16, V9.B16   // ~d
-	VORR V0.B16, V9.B16, V9.B16   // b | ~d
-	VEOR V1.B16, V9.B16, V12.B16  // F
+	WORD $0x4ee21c09                  // V9 = b | ~d (VORN)
+	VEOR V1.B16, V9.B16, V12.B16  // F = c ^ (b|~d)
 	VADD V3.S4, V13.S4, V14.S4   // a + X
 	MOVD $T_57<>(SB), R3
 	VLD1 (R3), [V15.S4]
@@ -970,9 +924,8 @@ TEXT ·md5x4core(SB), NOSPLIT, $0-16
 	VADD V0.S4, V12.S4, V3.S4
 
 	// Step 58: R4 g=6 s=15 T=0xa3014314  (a=V2 b=V3 c=V0 d=V1)
-	VEOR V8.B16, V1.B16, V9.B16   // ~d
-	VORR V3.B16, V9.B16, V9.B16   // b | ~d
-	VEOR V0.B16, V9.B16, V12.B16  // F
+	WORD $0x4ee11c69                  // V9 = b | ~d (VORN)
+	VEOR V0.B16, V9.B16, V12.B16  // F = c ^ (b|~d)
 	VADD V2.S4, V13.S4, V14.S4   // a + X
 	MOVD $T_58<>(SB), R3
 	VLD1 (R3), [V15.S4]
@@ -986,9 +939,8 @@ TEXT ·md5x4core(SB), NOSPLIT, $0-16
 	VADD V3.S4, V12.S4, V2.S4
 
 	// Step 59: R4 g=13 s=21 T=0x4e0811a1  (a=V1 b=V2 c=V3 d=V0)
-	VEOR V8.B16, V0.B16, V9.B16   // ~d
-	VORR V2.B16, V9.B16, V9.B16   // b | ~d
-	VEOR V3.B16, V9.B16, V12.B16  // F
+	WORD $0x4ee01c49                  // V9 = b | ~d (VORN)
+	VEOR V3.B16, V9.B16, V12.B16  // F = c ^ (b|~d)
 	VADD V1.S4, V13.S4, V14.S4   // a + X
 	MOVD $T_59<>(SB), R3
 	VLD1 (R3), [V15.S4]
@@ -1002,9 +954,8 @@ TEXT ·md5x4core(SB), NOSPLIT, $0-16
 	VADD V2.S4, V12.S4, V1.S4
 
 	// Step 60: R4 g=4 s=6 T=0xf7537e82  (a=V0 b=V1 c=V2 d=V3)
-	VEOR V8.B16, V3.B16, V9.B16   // ~d
-	VORR V1.B16, V9.B16, V9.B16   // b | ~d
-	VEOR V2.B16, V9.B16, V12.B16  // F
+	WORD $0x4ee31c29                  // V9 = b | ~d (VORN)
+	VEOR V2.B16, V9.B16, V12.B16  // F = c ^ (b|~d)
 	VADD V0.S4, V13.S4, V14.S4   // a + X
 	MOVD $T_60<>(SB), R3
 	VLD1 (R3), [V15.S4]
@@ -1018,9 +969,8 @@ TEXT ·md5x4core(SB), NOSPLIT, $0-16
 	VADD V1.S4, V12.S4, V0.S4
 
 	// Step 61: R4 g=11 s=10 T=0xbd3af235  (a=V3 b=V0 c=V1 d=V2)
-	VEOR V8.B16, V2.B16, V9.B16   // ~d
-	VORR V0.B16, V9.B16, V9.B16   // b | ~d
-	VEOR V1.B16, V9.B16, V12.B16  // F
+	WORD $0x4ee21c09                  // V9 = b | ~d (VORN)
+	VEOR V1.B16, V9.B16, V12.B16  // F = c ^ (b|~d)
 	VADD V3.S4, V13.S4, V14.S4   // a + X
 	MOVD $T_61<>(SB), R3
 	VLD1 (R3), [V15.S4]
@@ -1034,9 +984,8 @@ TEXT ·md5x4core(SB), NOSPLIT, $0-16
 	VADD V0.S4, V12.S4, V3.S4
 
 	// Step 62: R4 g=2 s=15 T=0x2ad7d2bb  (a=V2 b=V3 c=V0 d=V1)
-	VEOR V8.B16, V1.B16, V9.B16   // ~d
-	VORR V3.B16, V9.B16, V9.B16   // b | ~d
-	VEOR V0.B16, V9.B16, V12.B16  // F
+	WORD $0x4ee11c69                  // V9 = b | ~d (VORN)
+	VEOR V0.B16, V9.B16, V12.B16  // F = c ^ (b|~d)
 	VADD V2.S4, V13.S4, V14.S4   // a + X
 	MOVD $T_62<>(SB), R3
 	VLD1 (R3), [V15.S4]
@@ -1050,9 +999,8 @@ TEXT ·md5x4core(SB), NOSPLIT, $0-16
 	VADD V3.S4, V12.S4, V2.S4
 
 	// Step 63: R4 g=9 s=21 T=0xeb86d391  (a=V1 b=V2 c=V3 d=V0)
-	VEOR V8.B16, V0.B16, V9.B16   // ~d
-	VORR V2.B16, V9.B16, V9.B16   // b | ~d
-	VEOR V3.B16, V9.B16, V12.B16  // F
+	WORD $0x4ee01c49                  // V9 = b | ~d (VORN)
+	VEOR V3.B16, V9.B16, V12.B16  // F = c ^ (b|~d)
 	VADD V1.S4, V13.S4, V14.S4   // a + X
 	MOVD $T_63<>(SB), R3
 	VLD1 (R3), [V15.S4]
@@ -1071,10 +1019,6 @@ TEXT ·md5x4core(SB), NOSPLIT, $0-16
 
 	VST1 [V0.S4, V1.S4, V2.S4, V3.S4], 0(R1)
 	RET
-
-DATA allones<>+0(SB)/8,  $0xFFFFFFFFFFFFFFFF
-DATA allones<>+8(SB)/8,  $0xFFFFFFFFFFFFFFFF
-GLOBL allones<>(SB), RODATA|NOPTR, $16
 
 DATA T_0<>+0(SB)/4, $0xd76aa478
 DATA T_0<>+4(SB)/4, $0xd76aa478
