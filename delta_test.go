@@ -103,12 +103,12 @@ func TestGenerateSignatureBoundary(t *testing.T) {
 		fileSize int64
 	}{
 		// numBlocks = ceil(size/700). Target: numBlocks mod batch == 0.
-		{"8 blocks, last partial", 8*700 - 1},       // numBlocks=8 (=8),  last=699B
-		{"8 blocks, last tiny", 8*700 - 690},         // numBlocks=8 (=8),  last=10B
-		{"16 blocks, last partial", 16*700 - 1},      // numBlocks=16 (=16), last=699B
-		{"4 blocks, last partial", 4*700 - 1},        // numBlocks=4 (=4),  last=699B
-		{"not divisible", 8*700 + 300},               // numBlocks=9, last=300B — scalar path
-		{"exact multiple", 8 * 700},                  // numBlocks=8, all full — SIMD path
+		{"8 blocks, last partial", 8*700 - 1},   // numBlocks=8 (=8),  last=699B
+		{"8 blocks, last tiny", 8*700 - 690},    // numBlocks=8 (=8),  last=10B
+		{"16 blocks, last partial", 16*700 - 1}, // numBlocks=16 (=16), last=699B
+		{"4 blocks, last partial", 4*700 - 1},   // numBlocks=4 (=4),  last=699B
+		{"not divisible", 8*700 + 300},          // numBlocks=9, last=300B — scalar path
+		{"exact multiple", 8 * 700},             // numBlocks=8, all full — SIMD path
 	}
 
 	for _, tt := range tests {
@@ -140,6 +140,78 @@ func TestGenerateSignatureBoundary(t *testing.T) {
 		})
 	}
 }
+func TestDeltaZeroByteFiles(t *testing.T) {
+	// 0→0: should produce 0 instructions
+	insts := Delta([]byte{}, []byte{}, 700, "md5")
+	if len(insts) != 0 {
+		t.Errorf("0→0: expected 0 instructions, got %d", len(insts))
+	}
+
+	// 0→N: all literals
+	newF := []byte("hello")
+	insts = Delta([]byte{}, newF, 700, "md5")
+	literals := 0
+	for _, inst := range insts {
+		if inst.IsLiteral {
+			literals += len(inst.Data)
+		}
+	}
+	if literals != len(newF) {
+		t.Errorf("0→N: expected %d literal bytes, got %d", len(newF), literals)
+	}
+
+	// N→0: should produce empty result
+	oldF := []byte("hello")
+	insts = Delta(oldF, []byte{}, 700, "md5")
+	result, err := ApplyDelta(oldF, insts, 700, "md5")
+	if err != nil {
+		t.Fatalf("N→0: ApplyDelta: %v", err)
+	}
+	if len(result) != 0 {
+		t.Errorf("N→0: expected 0 bytes, got %d", len(result))
+	}
+}
+
+func TestDeltaTinyFiles(t *testing.T) {
+	// Files smaller than blockSize → all should roundtrip
+	blockSize := int32(700)
+	cases := []struct {
+		name    string
+		oldSize int
+		newSize int
+	}{
+		{"1→1 identical", 1, 1},
+		{"1→2 extended", 1, 2},
+		{"2→1 truncated", 2, 1},
+		{"700→700 full block", 700, 700},
+		{"699→699 partial block", 699, 699},
+		{"1→1000 small→large", 1, 1000},
+		{"1000→1 large→small", 1000, 1},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			oldF := make([]byte, c.oldSize)
+			newF := make([]byte, c.newSize)
+			for i := range oldF {
+				oldF[i] = byte(i * 13 % 251)
+			}
+			for i := range newF {
+				newF[i] = byte(i * 17 % 251)
+			}
+
+			result, err := RoundTrip(oldF, newF, blockSize, "md5")
+			if err != nil {
+				t.Fatalf("RoundTrip: %v", err)
+			}
+			if !bytes.Equal(result, newF) {
+				t.Errorf("roundtrip mismatch: old=%d new=%d result=%d",
+					c.oldSize, c.newSize, len(result))
+			}
+		})
+	}
+}
+
 func TestDeltaRoundTrip(t *testing.T) {
 	// Simulate: basisFile (old version) → newFile (new version)
 	basisFile := make([]byte, 100*1024) // 100KB
@@ -219,13 +291,13 @@ func TestDeltaIdenticalZeroLiteral(t *testing.T) {
 	// Sizes that produce a non-zero remainder with CalculateBlockSize:
 	// blockSize=700 for files <= 490KB.
 	sizes := []int{
-		700,          // exactly 1 block
-		701,          // 1 full + 1 byte tail
-		1400,         // exactly 2 blocks
-		3367,         // 4 full + 567 tail (the original bug case)
-		10000,        // 14 full + 200 tail
-		50 * 1024,    // ~73 full + partial tail
-		490 * 1024,   // max file size for blockSize=700
+		700,        // exactly 1 block
+		701,        // 1 full + 1 byte tail
+		1400,       // exactly 2 blocks
+		3367,       // 4 full + 567 tail (the original bug case)
+		10000,      // 14 full + 200 tail
+		50 * 1024,  // ~73 full + partial tail
+		490 * 1024, // max file size for blockSize=700
 	}
 	for _, sz := range sizes {
 		data := make([]byte, sz)
