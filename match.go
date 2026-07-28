@@ -859,12 +859,16 @@ func GenerateSignatureParallel(data []byte, blockSize int32, strongAlgo string) 
 							idx := base + b
 							sum2Start := idx * algo.Length
 							copy(sumBuf[sum2Start:], out8[b][:])
+							blkLen := int32(blockSize)
+							if r := fileSize - int64(idx)*int64(blockSize); r < int64(blockSize) {
+								blkLen = int32(r)
+							}
 							sig.BlockSums[idx] = BlockSum{
 								Index:  idx,
 								Sum1:   Checksum1(batchBuf[b*int(blockSize) : (b+1)*int(blockSize)]),
 								Sum2:   sumBuf[sum2Start : sum2Start+algo.Length],
 								Offset: int64(idx) * int64(blockSize),
-								Length: blockSize,
+								Length: blkLen,
 							}
 						}
 					} else {
@@ -920,12 +924,16 @@ func GenerateSignatureParallel(data []byte, blockSize int32, strongAlgo string) 
 							idx := base + b
 							sum2Start := idx * algo.Length
 							copy(sumBuf[sum2Start:], out4[b][:])
+							blkLen := int32(blockSize)
+							if r := fileSize - int64(idx)*int64(blockSize); r < int64(blockSize) {
+								blkLen = int32(r)
+							}
 							sig.BlockSums[idx] = BlockSum{
 								Index:  idx,
 								Sum1:   Checksum1(batchBuf[b*int(blockSize) : (b+1)*int(blockSize)]),
 								Sum2:   sumBuf[sum2Start : sum2Start+algo.Length],
 								Offset: int64(idx) * int64(blockSize),
-								Length: blockSize,
+								Length: blkLen,
 							}
 						}
 					} else {
@@ -980,12 +988,16 @@ func GenerateSignatureParallel(data []byte, blockSize int32, strongAlgo string) 
 							idx := base + b
 							sum2Start := idx * algo.Length
 							copy(sumBuf[sum2Start:], out8[b][:])
+							blkLen := int32(blockSize)
+							if r := fileSize - int64(idx)*int64(blockSize); r < int64(blockSize) {
+								blkLen = int32(r)
+							}
 							sig.BlockSums[idx] = BlockSum{
 								Index:  idx,
 								Sum1:   Checksum1(batchBuf[b*int(blockSize) : (b+1)*int(blockSize)]),
 								Sum2:   sumBuf[sum2Start : sum2Start+algo.Length],
 								Offset: int64(idx) * int64(blockSize),
-								Length: blockSize,
+								Length: blkLen,
 							}
 						}
 					} else {
@@ -1112,12 +1124,16 @@ func GenerateSignatureReader(r io.Reader, fileSize int64, blockSize int32, stron
 					idx := int(base) + b
 					start := idx * algo.Length
 					copy(sumBuf[start:], out16[b][:])
+					blkLen := int32(blockSize)
+					if r := fileSize - (base+int64(b))*int64(blockSize); r < int64(blockSize) {
+						blkLen = int32(r)
+					}
 					sig.BlockSums[idx] = BlockSum{
 						Index:  idx,
 						Sum1:   Checksum1(batchBuf[b*int(blockSize) : (b+1)*int(blockSize)]),
 						Sum2:   sumBuf[start : start+algo.Length],
 						Offset: (base + int64(b)) * int64(blockSize),
-						Length: blockSize,
+						Length: blkLen,
 					}
 				}
 			} else {
@@ -1184,12 +1200,16 @@ func GenerateSignatureReader(r io.Reader, fileSize int64, blockSize int32, stron
 					idx := int(base) + b
 					start := idx * algo.Length
 					copy(sumBuf[start:], out8[b][:])
+					blkLen := int32(blockSize)
+					if r := fileSize - (base+int64(b))*int64(blockSize); r < int64(blockSize) {
+						blkLen = int32(r)
+					}
 					sig.BlockSums[idx] = BlockSum{
 						Index:  idx,
 						Sum1:   Checksum1(batchBuf[b*int(blockSize) : (b+1)*int(blockSize)]),
 						Sum2:   sumBuf[start : start+algo.Length],
 						Offset: (base + int64(b)) * int64(blockSize),
-						Length: blockSize,
+						Length: blkLen,
 					}
 				}
 			} else {
@@ -1255,12 +1275,16 @@ func GenerateSignatureReader(r io.Reader, fileSize int64, blockSize int32, stron
 					idx := int(base) + b
 					start := idx * algo.Length
 					copy(sumBuf[start:], out4[b][:])
+					blkLen := int32(blockSize)
+					if r := fileSize - (base+int64(b))*int64(blockSize); r < int64(blockSize) {
+						blkLen = int32(r)
+					}
 					sig.BlockSums[idx] = BlockSum{
 						Index:  idx,
 						Sum1:   Checksum1(batchBuf[b*int(blockSize) : (b+1)*int(blockSize)]),
 						Sum2:   sumBuf[start : start+algo.Length],
 						Offset: (base + int64(b)) * int64(blockSize),
-						Length: blockSize,
+						Length: blkLen,
 					}
 				}
 			} else {
@@ -1325,12 +1349,16 @@ func GenerateSignatureReader(r io.Reader, fileSize int64, blockSize int32, stron
 					idx := int(base) + b
 					start := idx * algo.Length
 					copy(sumBuf[start:], out8[b][:])
+					blkLen := int32(blockSize)
+					if r := fileSize - (base+int64(b))*int64(blockSize); r < int64(blockSize) {
+						blkLen = int32(r)
+					}
 					sig.BlockSums[idx] = BlockSum{
 						Index:  idx,
 						Sum1:   Checksum1(batchBuf[b*int(blockSize) : (b+1)*int(blockSize)]),
 						Sum2:   sumBuf[start : start+algo.Length],
 						Offset: (base + int64(b)) * int64(blockSize),
-						Length: blockSize,
+						Length: blkLen,
 					}
 				}
 			} else {
