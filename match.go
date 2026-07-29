@@ -55,6 +55,14 @@ func computeTableSize(blockCount int) uint32 {
 // 大字面量拆分为多个 CHUNK_SIZE 块，确保接收端单次缓冲区分配不超过此值。
 const CHUNK_SIZE = 32 * 1024
 
+// maxChainLen caps the number of same-weak-checksum candidates compared
+// at a single file offset.  Without this cap, a signature with thousands
+// of blocks sharing one weak checksum (common in disk images with large
+// runs of identical blocks) turns the inner loop into an O(file_size ×
+// chain_length) scan.  The skipped data is sent literally — always correct,
+// only slightly affecting compression ratio.
+const maxChainLen = 1024
+
 // MatchEngine is the delta match engine.
 // MatchEngine 增量匹配引擎。
 type MatchEngine struct {
@@ -88,6 +96,10 @@ func NewMatchEngine(blockSize int32, strongAlgo string) *MatchEngine {
 }
 
 func (me *MatchEngine) LoadSignature(sig *Signature) {
+	if sig == nil {
+		me.checksums = nil
+		return
+	}
 	me.checksums = sig.BlockSums
 	me.buildHashTable()
 }
@@ -155,10 +167,18 @@ func (me *MatchEngine) Search(data []byte) []MatchResult {
 			// Computing MD5 before sum1 check wastes ~16TB of hashing on a 1GB file.
 			var sum2Done bool
 			var computedSum2 []byte
+			chainLen := 0
 
 			for _, entry := range bucket {
 				if entry.sum1 != rs.Value() {
 					continue
+				}
+
+				// Cap per-offset work to prevent O(N²) on pathological
+				// signatures (many blocks sharing the same weak checksum).
+				chainLen++
+				if chainLen > maxChainLen {
+					break
 				}
 
 				// Only compute strong checksum when weak sum matches.
@@ -364,10 +384,16 @@ func (me *MatchEngine) SearchReader(r io.Reader, fileSize int64, fn func(MatchRe
 			var sum2Done bool
 			var computedSum2 []byte
 			offIdx := int(offset - bufBase)
+			chainLen := 0
 
 			for _, entry := range bucket {
 				if entry.sum1 != rs.Value() {
 					continue
+				}
+
+				chainLen++
+				if chainLen > maxChainLen {
+					break
 				}
 
 				if !sum2Done {
