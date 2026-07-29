@@ -1,7 +1,7 @@
 # go-rsync
 
 [![Go Reference](https://pkg.go.dev/badge/github.com/henryborner/go-rsync.svg)](https://pkg.go.dev/github.com/henryborner/go-rsync)
-[![Go](https://img.shields.io/badge/Go-1.21+-blue)](https://go.dev)
+[![Go](https://img.shields.io/badge/Go-1.26+-blue)](https://go.dev)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
 **Go implementation of the rsync delta-transfer algorithm** — with AVX2/AVX-512 accelerated MD5 (8-way + 16-way SIMD). Rolling checksum matching, block signature generation, file reconstruction, and a binary wire protocol.
