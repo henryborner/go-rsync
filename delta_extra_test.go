@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/md5"
 	"crypto/rand"
+	"encoding/binary"
 	"fmt"
 	"io"
 	"testing"
@@ -1274,6 +1275,255 @@ func TestWantIdxAdjacentMatch(t *testing.T) {
 	}
 	if !bytes.Equal(out, newFile) {
 		t.Error("wantIdx test: reconstruction mismatch")
+	}
+}
+
+// =========================================================================
+// TestDecodeInstructionsStreamEdgeCases — 指令流解码边缘情况
+// 空流、截断数据、损坏数据不应 panic。
+// =========================================================================
+
+func TestDecodeInstructionsStreamEdgeCases(t *testing.T) {
+	// Case 1: empty stream (no header at all).
+	var called int
+	err := DecodeInstructionsStream(bytes.NewReader(nil), func(mr MatchResult) error {
+		called++
+		return nil
+	})
+	if err == nil {
+		t.Error("expected error on empty stream")
+	}
+	if called > 0 {
+		t.Error("callback should not be called on empty stream")
+	}
+
+	// Case 2: empty count=0 batch.
+	header := make([]byte, 4)
+	binary.BigEndian.PutUint32(header, 0)
+	err = DecodeInstructionsStream(bytes.NewReader(header), func(mr MatchResult) error {
+		called++
+		return nil
+	})
+	if err != nil {
+		t.Errorf("empty batch should succeed: %v", err)
+	}
+	if called > 0 {
+		t.Error("callback should not be called for empty batch")
+	}
+
+	// Case 3: truncated count header.
+	err = DecodeInstructionsStream(bytes.NewReader([]byte{0x00, 0x01}), func(mr MatchResult) error {
+		return nil
+	})
+	if err == nil {
+		t.Error("expected error on truncated header")
+	}
+
+	// Case 4: count claims 1 but no flag byte.
+	header = make([]byte, 4)
+	binary.BigEndian.PutUint32(header, 1)
+	err = DecodeInstructionsStream(bytes.NewReader(header), func(mr MatchResult) error {
+		return nil
+	})
+	if err == nil {
+		t.Error("expected error on missing flag byte")
+	}
+
+	// Case 5: literal flag but no length.
+	buf := new(bytes.Buffer)
+	binary.Write(buf, binary.BigEndian, uint32(1)) // count=1
+	buf.WriteByte(0)                               // flag=literal
+	err = DecodeInstructionsStream(bytes.NewReader(buf.Bytes()), func(mr MatchResult) error {
+		return nil
+	})
+	if err == nil {
+		t.Error("expected error on missing literal length")
+	}
+
+	// Case 6: match flag but no index.
+	buf.Reset()
+	binary.Write(buf, binary.BigEndian, uint32(1))
+	buf.WriteByte(1) // flag=match
+	err = DecodeInstructionsStream(bytes.NewReader(buf.Bytes()), func(mr MatchResult) error {
+		return nil
+	})
+	if err == nil {
+		t.Error("expected error on missing match index")
+	}
+
+	// Case 7: valid round-trip: encode then decode.
+	data := make([]byte, 10000)
+	for i := range data {
+		data[i] = byte((i*7 + 13) % 251)
+	}
+	sig := GenerateSignature(data, 700, "md5")
+	eng := NewMatchEngine(700, "md5")
+	eng.LoadSignature(sig)
+	insts := eng.Search(data)
+
+	var wireBuf bytes.Buffer
+	if err := WireEncodeInstructions(&wireBuf, insts); err != nil {
+		t.Fatalf("encode: %v", err)
+	}
+
+	var decoded []MatchResult
+	err = DecodeInstructionsStream(&wireBuf, func(mr MatchResult) error {
+		cp := mr
+		if mr.IsLiteral {
+			cp.Data = make([]byte, len(mr.Data))
+			copy(cp.Data, mr.Data)
+		}
+		decoded = append(decoded, cp)
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+
+	if len(decoded) != len(insts) {
+		t.Errorf("round-trip count: got %d want %d", len(decoded), len(insts))
+	}
+}
+
+// =========================================================================
+// TestMatchEngineReuse — MatchEngine 重复使用
+// 同一 engine LoadSignature→Search 两次，第二次应覆盖第一次。
+// =========================================================================
+
+func TestMatchEngineReuse(t *testing.T) {
+	// First file: 5 blocks of 'A'.
+	dataA := makeBytesRepeat(5*700, 'A')
+	sigA := GenerateSignature(dataA, 700, "md5")
+
+	// Second file: 10 blocks of 'B'.
+	dataB := makeBytesRepeat(10*700, 'B')
+	sigB := GenerateSignature(dataB, 700, "md5")
+
+	eng := NewMatchEngine(700, "md5")
+
+	// Round 1: load sigA, search dataA.
+	eng.LoadSignature(sigA)
+	results1 := eng.Search(dataA)
+	matches1 := eng.Matches
+	if matches1 != 5 {
+		t.Errorf("round 1: expected 5 matches, got %d", matches1)
+	}
+
+	// Round 2: load sigB, search dataB — stats accumulate across calls.
+	eng.LoadSignature(sigB)
+	results2 := eng.Search(dataB)
+	// Matches from round 2 alone = total - round 1.
+	matches2 := eng.Matches - matches1
+	if matches2 != 10 {
+		t.Errorf("round 2: expected 10 new matches, got %d (total=%d, round1=%d)",
+			matches2, eng.Matches, matches1)
+	}
+
+	// Verify both rounds reconstruct correctly.
+	recon := NewReconstructor(dataA, 700, "md5")
+	out1, _ := recon.Reconstruct(results1)
+	if !bytes.Equal(out1, dataA) {
+		t.Error("round 1 reconstruction mismatch")
+	}
+
+	recon2 := NewReconstructor(dataB, 700, "md5")
+	out2, _ := recon2.Reconstruct(results2)
+	if !bytes.Equal(out2, dataB) {
+		t.Error("round 2 reconstruction mismatch")
+	}
+}
+
+// =========================================================================
+// TestMatchStatsConsistency — 匹配统计一致性
+// HashHits ≥ FalseAlarms、LiteralBytes + MatchedBytes = fileSize。
+// =========================================================================
+
+func TestMatchStatsConsistency(t *testing.T) {
+	sizes := []int{700, 5000, 50000}
+	blockSize := int32(700)
+
+	for _, sz := range sizes {
+		oldF := make([]byte, sz)
+		newF := make([]byte, sz)
+		for i := range oldF {
+			oldF[i] = byte((i*13 + 7) % 251)
+		}
+		copy(newF, oldF)
+		for i := 0; i < len(newF)/20; i++ {
+			newF[i*20] ^= 0xFF
+		}
+
+		sig := GenerateSignature(oldF, blockSize, "md5")
+		eng := NewMatchEngine(blockSize, "md5")
+		eng.LoadSignature(sig)
+		eng.Search(newF)
+
+		// Hash hits must >= false alarms.
+		if eng.HashHits < eng.FalseAlarms {
+			t.Errorf("size=%d: HashHits(%d) < FalseAlarms(%d)",
+				sz, eng.HashHits, eng.FalseAlarms)
+		}
+
+		// Literal + matched bytes should sum to file size.
+		matchedBytes := int64(eng.Matches) * int64(blockSize)
+		totalCovered := eng.LiteralBytes + matchedBytes
+		// Note: may exceed fileSize slightly due to partial last block,
+		// so we check that they're in the same ballpark.
+		if totalCovered < int64(sz) || totalCovered > int64(sz)+int64(blockSize) {
+			t.Errorf("size=%d: LiteralBytes(%d) + matched(%d) = %d, fileSize=%d",
+				sz, eng.LiteralBytes, matchedBytes, totalCovered, sz)
+		}
+
+		// Matches should be >= 0 and <= block count.
+		blockCount := (sz + int(blockSize) - 1) / int(blockSize)
+		if eng.Matches < 0 || eng.Matches > blockCount {
+			t.Errorf("size=%d: Matches=%d out of range [0, %d]",
+				sz, eng.Matches, blockCount)
+		}
+	}
+}
+
+// =========================================================================
+// TestTinyBlockSize — 极小 blockSize 往返测试
+// blockSize=1,2,3 的边界行为。
+// =========================================================================
+
+func TestTinyBlockSize(t *testing.T) {
+	blockSizes := []int32{1, 2, 3}
+	fileSizes := []int{0, 1, 2, 3, 10, 100}
+
+	for _, bs := range blockSizes {
+		for _, sz := range fileSizes {
+			name := fmt.Sprintf("bs=%d/sz=%d", bs, sz)
+			t.Run(name, func(t *testing.T) {
+				oldF := make([]byte, sz)
+				newF := make([]byte, sz)
+				for i := range oldF {
+					oldF[i] = byte((i*17 + 5) % 251)
+				}
+				copy(newF, oldF)
+				if sz > 1 {
+					newF[sz/2] ^= 0xFF
+				}
+
+				result, err := RoundTrip(oldF, newF, bs, "md5")
+				if err != nil {
+					t.Fatalf("RoundTrip: %v", err)
+				}
+				if !bytes.Equal(result, newF) {
+					t.Errorf("mismatch: old=%d new=%d result=%d", sz, sz, len(result))
+				}
+
+				// Also verify identical file.
+				result2, err := RoundTrip(oldF, oldF, bs, "md5")
+				if err != nil {
+					t.Fatalf("identical RoundTrip: %v", err)
+				}
+				if !bytes.Equal(result2, oldF) {
+					t.Error("identical file mismatch")
+				}
+			})
+		}
 	}
 }
 
