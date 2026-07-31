@@ -27,10 +27,10 @@ type Reconstructor struct {
 // NewReconstructor 创建重建器。
 // blockLens 可选：传入每个块的实际长度（通常来自 Signature.BlockSums[].Length），
 // 避免最后一个块复制多余字节。传 nil 则全部使用 blockSize 并靠文件长度截断。
-func NewReconstructor(basisFile []byte, blockSize int32, strongAlgo string, blockLens ...[]int32) *Reconstructor {
+func NewReconstructor(basisFile []byte, blockSize int32, strongAlgo string, blockLens ...[]int32) (*Reconstructor, error) {
 	algo, err := GetAlgo(strongAlgo)
 	if err != nil {
-		algo = MustGet(GetDefault())
+		return nil, err
 	}
 	rc := &Reconstructor{
 		basisFile:  basisFile,
@@ -40,7 +40,7 @@ func NewReconstructor(basisFile []byte, blockSize int32, strongAlgo string, bloc
 	if len(blockLens) > 0 && blockLens[0] != nil {
 		rc.blockLens = blockLens[0]
 	}
-	return rc
+	return rc, nil
 }
 
 // Reconstruct rebuilds a file from an instruction sequence.

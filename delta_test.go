@@ -94,7 +94,7 @@ func TestGenerateSignatureParallel(t *testing.T) {
 	serial := GenerateSignature(data, blockSize, "md5")
 
 	// Parallel
-	parallel := GenerateSignatureParallel(data, blockSize, "md5")
+	parallel, _ := GenerateSignatureParallel(data, blockSize, "md5")
 
 	if serial.BlockSize != parallel.BlockSize || serial.FileSize != parallel.FileSize {
 		t.Fatalf("header mismatch: serial=%+v parallel=%+v", serial, parallel)
@@ -145,7 +145,7 @@ func TestGenerateSignatureBoundary(t *testing.T) {
 			}
 
 			serial := GenerateSignature(data, blockSize, "md5")
-			parallel := GenerateSignatureParallel(data, blockSize, "md5")
+			parallel, _ := GenerateSignatureParallel(data, blockSize, "md5")
 
 			if len(serial.BlockSums) != len(parallel.BlockSums) {
 				t.Fatalf("block count: serial=%d parallel=%d",
@@ -168,14 +168,14 @@ func TestGenerateSignatureBoundary(t *testing.T) {
 }
 func TestDeltaZeroByteFiles(t *testing.T) {
 	// 0→0: should produce 0 instructions
-	insts := Delta([]byte{}, []byte{}, 700, "md5")
+	insts, _ := Delta([]byte{}, []byte{}, 700, "md5")
 	if len(insts) != 0 {
 		t.Errorf("0→0: expected 0 instructions, got %d", len(insts))
 	}
 
 	// 0→N: all literals
 	newF := []byte("hello")
-	insts = Delta([]byte{}, newF, 700, "md5")
+	insts, _ = Delta([]byte{}, newF, 700, "md5")
 	literals := 0
 	for _, inst := range insts {
 		if inst.IsLiteral {
@@ -188,7 +188,7 @@ func TestDeltaZeroByteFiles(t *testing.T) {
 
 	// N→0: should produce empty result
 	oldF := []byte("hello")
-	insts = Delta(oldF, []byte{}, 700, "md5")
+	insts, _ = Delta(oldF, []byte{}, 700, "md5")
 	result, err := ApplyDelta(oldF, insts, 700, "md5")
 	if err != nil {
 		t.Fatalf("N→0: ApplyDelta: %v", err)
@@ -252,11 +252,11 @@ func TestDeltaRoundTrip(t *testing.T) {
 
 	sig := GenerateSignature(basisFile, blockSize, "md5")
 
-	engine := NewMatchEngine(blockSize, "md5")
+	engine, _ := NewMatchEngine(blockSize, "md5")
 	engine.LoadSignature(sig)
 	instructions := engine.Search(newFile)
 
-	recon := NewReconstructor(basisFile, blockSize, "md5")
+	recon, _ := NewReconstructor(basisFile, blockSize, "md5")
 	result, err := recon.Reconstruct(instructions)
 	if err != nil {
 		t.Fatalf("reconstruct failed: %v", err)
@@ -289,11 +289,11 @@ func TestDeltaIdentical(t *testing.T) {
 
 	sig := GenerateSignature(data, blockSize, "md5")
 
-	engine := NewMatchEngine(blockSize, "md5")
+	engine, _ := NewMatchEngine(blockSize, "md5")
 	engine.LoadSignature(sig)
 	instructions := engine.Search(data)
 
-	recon := NewReconstructor(data, blockSize, "md5")
+	recon, _ := NewReconstructor(data, blockSize, "md5")
 	result, err := recon.Reconstruct(instructions)
 	if err != nil {
 		t.Fatalf("reconstruct failed: %v", err)
@@ -331,7 +331,7 @@ func TestDeltaIdenticalZeroLiteral(t *testing.T) {
 		blockSize := CalculateBlockSize(int64(sz))
 
 		sig := GenerateSignature(data, blockSize, "md5")
-		eng := NewMatchEngine(blockSize, "md5")
+		eng, _ := NewMatchEngine(blockSize, "md5")
 		eng.LoadSignature(sig)
 		_ = eng.Search(data)
 
@@ -346,7 +346,7 @@ func TestReconstructNegativeBlockIdx(t *testing.T) {
 	// Negative block index from corrupt wire data must return an error, not panic.
 	// 负 BlockIdx（来自损坏的 wire 数据）必须返回错误而非 panic。
 	basis := make([]byte, 1024)
-	recon := NewReconstructor(basis, 512, "md5")
+	recon, _ := NewReconstructor(basis, 512, "md5")
 
 	// Reconstruct
 	_, err := recon.Reconstruct([]MatchResult{
@@ -438,7 +438,7 @@ func BenchmarkSearch(b *testing.B) {
 
 	b.ResetTimer()
 	for b.Loop() {
-		engine := NewMatchEngine(blockSize, "md5")
+		engine, _ := NewMatchEngine(blockSize, "md5")
 		engine.LoadSignature(sig)
 		engine.Search(newFile)
 	}
@@ -472,12 +472,12 @@ func TestExampleUsage(t *testing.T) {
 	// 1. generate signature for old file
 	sig := GenerateSignature(oldFile, blockSize, "md5")
 
-	engine := NewMatchEngine(blockSize, "md5")
+	engine, _ := NewMatchEngine(blockSize, "md5")
 	engine.LoadSignature(sig)
 	instructions := engine.Search(newFile)
 
 	// 3. reconstruct
-	recon := NewReconstructor(oldFile, blockSize, "md5")
+	recon, _ := NewReconstructor(oldFile, blockSize, "md5")
 	result, _ := recon.Reconstruct(instructions)
 
 	t.Logf("original: %s", newFile)
@@ -508,7 +508,7 @@ func TestSpeedComparison(t *testing.T) {
 		modified[i*20] ^= 0xFF
 	}
 
-	engine := NewMatchEngine(blockSize, "md5")
+	engine, _ := NewMatchEngine(blockSize, "md5")
 	engine.LoadSignature(sig)
 
 	start = time.Now()
@@ -535,12 +535,12 @@ func TestSearchReaderParity(t *testing.T) {
 		sig := GenerateSignature(data, blockSize, "md5")
 
 		// Batch search
-		eng1 := NewMatchEngine(blockSize, "md5")
+		eng1, _ := NewMatchEngine(blockSize, "md5")
 		eng1.LoadSignature(sig)
 		batchResults := eng1.Search(data)
 
 		// Streaming search
-		eng2 := NewMatchEngine(blockSize, "md5")
+		eng2, _ := NewMatchEngine(blockSize, "md5")
 		eng2.LoadSignature(sig)
 		var streamResults []MatchResult
 		err := eng2.SearchReader(bytes.NewReader(data), int64(len(data)), func(mr MatchResult) error {
@@ -590,7 +590,7 @@ func TestSearchReaderSmallFile(t *testing.T) {
 	blockSize := int32(700)
 
 	sig := GenerateSignature(data, blockSize, "md5")
-	eng := NewMatchEngine(blockSize, "md5")
+	eng, _ := NewMatchEngine(blockSize, "md5")
 	eng.LoadSignature(sig)
 
 	var results []MatchResult
@@ -692,7 +692,7 @@ func TestSearchReaderLiteralFlush(t *testing.T) {
 	blockSize := CalculateBlockSize(int64(len(basisFile)))
 	sig := GenerateSignature(basisFile, blockSize, "md5")
 
-	eng := NewMatchEngine(blockSize, "md5")
+	eng, _ := NewMatchEngine(blockSize, "md5")
 	eng.LoadSignature(sig)
 
 	var totalLiteral int64
@@ -730,7 +730,7 @@ func BenchmarkSearchReader(b *testing.B) {
 	b.ResetTimer()
 	b.ReportAllocs()
 	for b.Loop() {
-		eng := NewMatchEngine(blockSize, "md5")
+		eng, _ := NewMatchEngine(blockSize, "md5")
 		eng.LoadSignature(sig)
 		eng.SearchReader(bytes.NewReader(newFile), int64(len(newFile)), func(MatchResult) error {
 			return nil
@@ -758,18 +758,18 @@ func TestSearchParallelParity(t *testing.T) {
 		sig := GenerateSignature(data, blockSize, "md5")
 
 		// Serial
-		eng1 := NewMatchEngine(blockSize, "md5")
+		eng1, _ := NewMatchEngine(blockSize, "md5")
 		eng1.LoadSignature(sig)
 		serial := eng1.Search(modified)
 
 		// Parallel (2, 4, 8 workers)
 		for _, workers := range []int{2, 4, 8} {
-			eng2 := NewMatchEngine(blockSize, "md5")
+			eng2, _ := NewMatchEngine(blockSize, "md5")
 			eng2.LoadSignature(sig)
 			parallel := eng2.SearchParallel(modified, workers)
 
 			// Reconstruct and verify
-			recon := NewReconstructor(data, blockSize, "md5")
+			recon, _ := NewReconstructor(data, blockSize, "md5")
 			serialResult, _ := recon.Reconstruct(serial)
 			parallelResult, _ := recon.Reconstruct(parallel)
 
@@ -798,17 +798,17 @@ func TestSearchParallelIdentical(t *testing.T) {
 	sig := GenerateSignature(data, blockSize, "md5")
 
 	// Serial baseline
-	engSer := NewMatchEngine(blockSize, "md5")
+	engSer, _ := NewMatchEngine(blockSize, "md5")
 	engSer.LoadSignature(sig)
 	serial := engSer.Search(data)
 
 	// Parallel
-	eng := NewMatchEngine(blockSize, "md5")
+	eng, _ := NewMatchEngine(blockSize, "md5")
 	eng.LoadSignature(sig)
 	parallel := eng.SearchParallel(data, 4)
 
 	// Reconstruct both
-	recon := NewReconstructor(data, blockSize, "md5")
+	recon, _ := NewReconstructor(data, blockSize, "md5")
 	serialResult, _ := recon.Reconstruct(serial)
 	parallelResult, _ := recon.Reconstruct(parallel)
 
@@ -848,7 +848,7 @@ func TestSearchParallelSmallFile(t *testing.T) {
 	blockSize := int32(700)
 
 	sig := GenerateSignature(data, blockSize, "md5")
-	eng := NewMatchEngine(blockSize, "md5")
+	eng, _ := NewMatchEngine(blockSize, "md5")
 	eng.LoadSignature(sig)
 
 	serial := eng.Search(data)
@@ -880,7 +880,7 @@ func BenchmarkSearchParallel(b *testing.B) {
 		b.Run(fmt.Sprintf("workers=%d", workers), func(b *testing.B) {
 			b.ReportAllocs()
 			for b.Loop() {
-				eng := NewMatchEngine(blockSize, "md5")
+				eng, _ := NewMatchEngine(blockSize, "md5")
 				eng.LoadSignature(sig)
 				eng.SearchParallel(newFile, workers)
 			}

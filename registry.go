@@ -28,8 +28,11 @@
 //	delta.WireEncodeInstructions(os.Stdout, insts)
 //
 //	// --- Receiver side ---
-//	sig, _ := delta.WireDecodeSignature(os.Stdin)
-//	recon := delta.NewReconstructor(oldFile, blockSize, "md5")
+//	sig, err := delta.WireDecodeSignature(os.Stdin)
+//	if err != nil {
+//	    log.Fatal(err)
+//	}
+//	recon, err := delta.NewReconstructor(oldFile, blockSize, "md5")
 //	delta.DecodeInstructionsStream(os.Stdin, func(inst delta.MatchResult) error {
 //	    return recon.WriteInstruction(os.Stdout, inst)
 //	})

@@ -18,11 +18,11 @@ func Example() {
 	blockSize := int32(32)
 
 	sig := delta.GenerateSignature(oldFile, blockSize, "md5")
-	eng := delta.NewMatchEngine(blockSize, "md5")
+	eng, _ := delta.NewMatchEngine(blockSize, "md5")
 	eng.LoadSignature(sig)
 	instructions := eng.Search(newFile)
 
-	recon := delta.NewReconstructor(oldFile, blockSize, "md5")
+	recon, _ := delta.NewReconstructor(oldFile, blockSize, "md5")
 	result, _ := recon.Reconstruct(instructions)
 
 	fmt.Println(bytes.Equal(result, newFile))
@@ -46,7 +46,7 @@ func Example_streaming() {
 
 	blockSize := int32(32)
 	sig := delta.GenerateSignature(oldFile, blockSize, "md5")
-	eng := delta.NewMatchEngine(blockSize, "md5")
+	eng, _ := delta.NewMatchEngine(blockSize, "md5")
 	eng.LoadSignature(sig)
 
 	var instructions []delta.MatchResult
@@ -61,7 +61,7 @@ func Example_streaming() {
 			return nil
 		})
 
-	recon := delta.NewReconstructor(oldFile, blockSize, "md5")
+	recon, _ := delta.NewReconstructor(oldFile, blockSize, "md5")
 	result, _ := recon.Reconstruct(instructions)
 
 	fmt.Println(bytes.Equal(result, newFile))
@@ -85,11 +85,11 @@ func Example_parallel() {
 	blockSize := delta.CalculateBlockSize(int64(len(oldFile)))
 	sig := delta.GenerateSignature(oldFile, blockSize, "md5")
 
-	eng := delta.NewMatchEngine(blockSize, "md5")
+	eng, _ := delta.NewMatchEngine(blockSize, "md5")
 	eng.LoadSignature(sig)
 	results := eng.SearchParallel(newFile, 4) // 4 workers
 
-	recon := delta.NewReconstructor(oldFile, blockSize, "md5")
+	recon, _ := delta.NewReconstructor(oldFile, blockSize, "md5")
 	result, _ := recon.Reconstruct(results)
 
 	fmt.Println(bytes.Equal(result, newFile))

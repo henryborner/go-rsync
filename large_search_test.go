@@ -21,7 +21,7 @@ func TestLargeFileSearch(t *testing.T) {
 	sig := GenerateSignature(data, blockSize, "md5")
 	t.Logf("Signature: %d blocks generated", len(sig.BlockSums))
 
-	engine := NewMatchEngine(blockSize, "md5")
+	engine, _ := NewMatchEngine(blockSize, "md5")
 	engine.LoadSignature(sig)
 
 	start := time.Now()

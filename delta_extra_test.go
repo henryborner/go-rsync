@@ -159,7 +159,7 @@ func TestHashSearchChainCap(t *testing.T) {
 	// Step 3: search a constant-byte source.
 	source := makeBytesRepeat(sourceLen, constByte)
 
-	eng := NewMatchEngine(blockSize, "md5")
+	eng, _ := NewMatchEngine(blockSize, "md5")
 	eng.LoadSignature(sig)
 	results := eng.Search(source)
 
@@ -354,11 +354,11 @@ func TestShortChecksumWireFormat(t *testing.T) {
 			newData[len(newData)/2] ^= 0xFF
 			newData[len(newData)/2+100] ^= 0xFF
 
-			eng := NewMatchEngine(decoded.BlockSize, algo)
+			eng, _ := NewMatchEngine(decoded.BlockSize, algo)
 			eng.LoadSignature(decoded)
 			insts := eng.Search(newData)
 
-			recon := NewReconstructor(data, decoded.BlockSize, algo)
+			recon, _ := NewReconstructor(data, decoded.BlockSize, algo)
 			result, err := recon.Reconstruct(insts)
 			if err != nil {
 				t.Fatalf("reconstruct from wire-decoded sig: %v", err)
@@ -555,7 +555,7 @@ func TestGenerateSignatureReaderAllAlgos(t *testing.T) {
 				memSig := GenerateSignature(data, 700, algo)
 
 				// Streaming reader path.
-				readerSig := GenerateSignatureReader(
+				readerSig, _ := GenerateSignatureReader(
 					bytes.NewReader(data), int64(sz), 700, algo)
 
 				// Compare headers.
@@ -613,10 +613,10 @@ func TestSearchReaderChunkedReads(t *testing.T) {
 	sig := GenerateSignature(oldData, blockSize, "md5")
 
 	// Baseline: batch Search.
-	batchEng := NewMatchEngine(blockSize, "md5")
+	batchEng, _ := NewMatchEngine(blockSize, "md5")
 	batchEng.LoadSignature(sig)
 	batchResults := batchEng.Search(newData)
-	batchRecon := NewReconstructor(oldData, blockSize, "md5")
+	batchRecon, _ := NewReconstructor(oldData, blockSize, "md5")
 	batchOut, _ := batchRecon.Reconstruct(batchResults)
 
 	// Test various chunk sizes for streaming reads.
@@ -635,7 +635,7 @@ func TestSearchReaderChunkedReads(t *testing.T) {
 		t.Run(fmt.Sprintf("chunk=%d", chunk), func(t *testing.T) {
 			cr := &chunkedReader{data: newData, chunkSize: chunk}
 
-			eng := NewMatchEngine(blockSize, "md5")
+			eng, _ := NewMatchEngine(blockSize, "md5")
 			eng.LoadSignature(sig)
 
 			var results []MatchResult
@@ -653,7 +653,7 @@ func TestSearchReaderChunkedReads(t *testing.T) {
 			}
 
 			// Reconstruct and verify.
-			recon := NewReconstructor(oldData, blockSize, "md5")
+			recon, _ := NewReconstructor(oldData, blockSize, "md5")
 			out, err := recon.Reconstruct(results)
 			if err != nil {
 				t.Fatalf("Reconstruct: %v", err)
@@ -735,12 +735,12 @@ func TestPartialBasisReconstruction(t *testing.T) {
 
 	// Delta from full old file → new file.
 	// Expected: match block 0, match block 1, literal (block 2 = all 'D').
-	eng := NewMatchEngine(blockSize, "md5")
+	eng, _ := NewMatchEngine(blockSize, "md5")
 	eng.LoadSignature(sig)
 	instructions := eng.Search(newFile)
 
 	// ── Scenario A: full basis (normal case) ──
-	fullRecon := NewReconstructor(oldFile, blockSize, "md5")
+	fullRecon, _ := NewReconstructor(oldFile, blockSize, "md5")
 	fullOut, err := fullRecon.Reconstruct(instructions)
 	if err != nil {
 		t.Fatalf("full basis reconstruct: %v", err)
@@ -754,7 +754,7 @@ func TestPartialBasisReconstruction(t *testing.T) {
 	// and a literal for block 2 (which the basis doesn't need).
 	truncatedBasis := oldFile[:2*int(blockSize)] // 1400 bytes
 
-	partialRecon := NewReconstructor(truncatedBasis, blockSize, "md5")
+	partialRecon, _ := NewReconstructor(truncatedBasis, blockSize, "md5")
 	partialOut, err := partialRecon.Reconstruct(instructions)
 	if err != nil {
 		t.Fatalf("truncated basis reconstruct: %v", err)
@@ -771,7 +771,7 @@ func TestPartialBasisReconstruction(t *testing.T) {
 	for i := range blockLens {
 		blockLens[i] = sig.BlockSums[i].Length
 	}
-	partialRecon2 := NewReconstructor(truncatedBasis, blockSize, "md5", blockLens)
+	partialRecon2, _ := NewReconstructor(truncatedBasis, blockSize, "md5", blockLens)
 	partialOut2, err := partialRecon2.Reconstruct(instructions)
 	if err != nil {
 		t.Fatalf("truncated basis + blockLens reconstruct: %v", err)
@@ -784,11 +784,11 @@ func TestPartialBasisReconstruction(t *testing.T) {
 	for _, algo := range []string{"sha256", "xxh64", "xxh3"} {
 		t.Run(algo, func(t *testing.T) {
 			sig := GenerateSignature(oldFile, blockSize, algo)
-			eng := NewMatchEngine(blockSize, algo)
+			eng, _ := NewMatchEngine(blockSize, algo)
 			eng.LoadSignature(sig)
 			insts := eng.Search(newFile)
 
-			partialRecon := NewReconstructor(truncatedBasis, blockSize, algo)
+			partialRecon, _ := NewReconstructor(truncatedBasis, blockSize, algo)
 			out, err := partialRecon.Reconstruct(insts)
 			if err != nil {
 				t.Fatalf("%s truncated basis: %v", algo, err)
@@ -827,7 +827,7 @@ func TestPartialBasisLastBlockPartial(t *testing.T) {
 	}
 
 	// Delta: identical file → should produce all block matches.
-	eng := NewMatchEngine(blockSize, "md5")
+	eng, _ := NewMatchEngine(blockSize, "md5")
 	eng.LoadSignature(sig)
 	instructions := eng.Search(newFile)
 
@@ -837,7 +837,7 @@ func TestPartialBasisLastBlockPartial(t *testing.T) {
 	// for blocks beyond basis. The test verifies this is handled gracefully.
 	truncatedBasis := oldFile[:2*int(blockSize)]
 
-	recon := NewReconstructor(truncatedBasis, blockSize, "md5")
+	recon, _ := NewReconstructor(truncatedBasis, blockSize, "md5")
 	_, err := recon.Reconstruct(instructions)
 	// Since blocks 2 and 3 reference positions beyond the truncated basis,
 	// the reconstructor should return an error.
@@ -883,7 +883,7 @@ func TestLargeBlockCountHashTable(t *testing.T) {
 	}
 
 	// ── Test 1: Identical file search ──
-	eng := NewMatchEngine(blockSize, "md5")
+	eng, _ := NewMatchEngine(blockSize, "md5")
 	eng.LoadSignature(sig)
 	results := eng.Search(oldFile)
 
@@ -900,7 +900,7 @@ func TestLargeBlockCountHashTable(t *testing.T) {
 		t.Errorf("identical file: Matches=%d, expected %d", eng.Matches, numBlocks)
 	}
 
-	recon := NewReconstructor(oldFile, blockSize, "md5")
+	recon, _ := NewReconstructor(oldFile, blockSize, "md5")
 	out, err := recon.Reconstruct(results)
 	if err != nil {
 		t.Fatalf("reconstruct: %v", err)
@@ -917,11 +917,11 @@ func TestLargeBlockCountHashTable(t *testing.T) {
 		newFile[i] ^= 0xFF
 	}
 
-	eng2 := NewMatchEngine(blockSize, "md5")
+	eng2, _ := NewMatchEngine(blockSize, "md5")
 	eng2.LoadSignature(sig)
 	insts2 := eng2.Search(newFile)
 
-	recon2 := NewReconstructor(oldFile, blockSize, "md5")
+	recon2, _ := NewReconstructor(oldFile, blockSize, "md5")
 	out2, err := recon2.Reconstruct(insts2)
 	if err != nil {
 		t.Fatalf("reconstruct modified: %v", err)
@@ -935,7 +935,7 @@ func TestLargeBlockCountHashTable(t *testing.T) {
 		float64(eng2.LiteralBytes)/float64(fileSize)*100)
 
 	// ── Test 3: Streaming search with large table ──
-	eng3 := NewMatchEngine(blockSize, "md5")
+	eng3, _ := NewMatchEngine(blockSize, "md5")
 	eng3.LoadSignature(sig)
 
 	var streamResults []MatchResult
@@ -952,7 +952,7 @@ func TestLargeBlockCountHashTable(t *testing.T) {
 		t.Fatalf("SearchReader with large table: %v", err)
 	}
 
-	recon3 := NewReconstructor(oldFile, blockSize, "md5")
+	recon3, _ := NewReconstructor(oldFile, blockSize, "md5")
 	out3, err := recon3.Reconstruct(streamResults)
 	if err != nil {
 		t.Fatalf("reconstruct stream: %v", err)
@@ -1032,12 +1032,12 @@ func TestReconstructWriteInstructionParity(t *testing.T) {
 	}
 
 	sig := GenerateSignature(oldFile, 700, "md5")
-	eng := NewMatchEngine(700, "md5")
+	eng, _ := NewMatchEngine(700, "md5")
 	eng.LoadSignature(sig)
 	insts := eng.Search(newFile)
 
 	// Path A: Reconstruct (batch).
-	recon := NewReconstructor(oldFile, 700, "md5")
+	recon, _ := NewReconstructor(oldFile, 700, "md5")
 	batchOut, err := recon.Reconstruct(insts)
 	if err != nil {
 		t.Fatalf("Reconstruct: %v", err)
@@ -1077,7 +1077,7 @@ func TestMatchEngineEmptyState(t *testing.T) {
 	data := []byte("some test data for empty engine")
 
 	// Case 1: Search before any LoadSignature.
-	eng1 := NewMatchEngine(700, "md5")
+	eng1, _ := NewMatchEngine(700, "md5")
 	results := eng1.Search(data)
 	if len(results) == 0 {
 		t.Error("expected at least one literal result from empty engine")
@@ -1090,7 +1090,7 @@ func TestMatchEngineEmptyState(t *testing.T) {
 	}
 
 	// Case 2: Load nil signature (should not panic).
-	eng2 := NewMatchEngine(700, "md5")
+	eng2, _ := NewMatchEngine(700, "md5")
 	eng2.LoadSignature(nil)
 	results2 := eng2.Search(data)
 	totalLit := int64(0)
@@ -1104,7 +1104,7 @@ func TestMatchEngineEmptyState(t *testing.T) {
 	}
 
 	// Case 3: Empty signature (zero blocks, non-nil).
-	eng3 := NewMatchEngine(700, "md5")
+	eng3, _ := NewMatchEngine(700, "md5")
 	eng3.LoadSignature(&Signature{BlockSize: 700, BlockSums: []BlockSum{}})
 	results3 := eng3.Search(data)
 	totalLit3 := int64(0)
@@ -1118,7 +1118,7 @@ func TestMatchEngineEmptyState(t *testing.T) {
 	}
 
 	// Case 4: Zero-block non-nil signature with nil BlockSums.
-	eng4 := NewMatchEngine(700, "md5")
+	eng4, _ := NewMatchEngine(700, "md5")
 	eng4.LoadSignature(&Signature{BlockSize: 700, FileSize: 0, BlockSums: nil})
 	results4 := eng4.Search(data)
 	if len(results4) == 0 && len(data) > 0 {
@@ -1126,7 +1126,7 @@ func TestMatchEngineEmptyState(t *testing.T) {
 	}
 
 	// Case 5: SearchReader before LoadSignature.
-	eng5 := NewMatchEngine(700, "md5")
+	eng5, _ := NewMatchEngine(700, "md5")
 	var srResults []MatchResult
 	err := eng5.SearchReader(bytes.NewReader(data), int64(len(data)),
 		func(mr MatchResult) error {
@@ -1146,7 +1146,7 @@ func TestMatchEngineEmptyState(t *testing.T) {
 	}
 
 	// Case 6: Reconstruct from empty engine results.
-	recon := NewReconstructor(data, 700, "md5")
+	recon, _ := NewReconstructor(data, 700, "md5")
 	out, err := recon.Reconstruct(results)
 	if err != nil {
 		t.Fatalf("Reconstruct empty engine results: %v", err)
@@ -1178,7 +1178,7 @@ func TestSearchDeterminism(t *testing.T) {
 	var firstResults []MatchResult
 
 	for run := 0; run < runs; run++ {
-		eng := NewMatchEngine(700, "md5")
+		eng, _ := NewMatchEngine(700, "md5")
 		eng.LoadSignature(sig)
 		results := eng.Search(newFile)
 
@@ -1243,7 +1243,7 @@ func TestWantIdxAdjacentMatch(t *testing.T) {
 	copy(newFile, oldFile)
 
 	sig := GenerateSignature(oldFile, blockSize, "md5")
-	eng := NewMatchEngine(blockSize, "md5")
+	eng, _ := NewMatchEngine(blockSize, "md5")
 	eng.LoadSignature(sig)
 	results := eng.Search(newFile)
 
@@ -1268,7 +1268,7 @@ func TestWantIdxAdjacentMatch(t *testing.T) {
 	}
 
 	// Verify reconstruction.
-	recon := NewReconstructor(oldFile, blockSize, "md5")
+	recon, _ := NewReconstructor(oldFile, blockSize, "md5")
 	out, err := recon.Reconstruct(results)
 	if err != nil {
 		t.Fatalf("Reconstruct: %v", err)
@@ -1357,7 +1357,7 @@ func TestDecodeInstructionsStreamEdgeCases(t *testing.T) {
 		data[i] = byte((i*7 + 13) % 251)
 	}
 	sig := GenerateSignature(data, 700, "md5")
-	eng := NewMatchEngine(700, "md5")
+	eng, _ := NewMatchEngine(700, "md5")
 	eng.LoadSignature(sig)
 	insts := eng.Search(data)
 
@@ -1399,7 +1399,7 @@ func TestMatchEngineReuse(t *testing.T) {
 	dataB := makeBytesRepeat(10*700, 'B')
 	sigB := GenerateSignature(dataB, 700, "md5")
 
-	eng := NewMatchEngine(700, "md5")
+	eng, _ := NewMatchEngine(700, "md5")
 
 	// Round 1: load sigA, search dataA.
 	eng.LoadSignature(sigA)
@@ -1420,13 +1420,13 @@ func TestMatchEngineReuse(t *testing.T) {
 	}
 
 	// Verify both rounds reconstruct correctly.
-	recon := NewReconstructor(dataA, 700, "md5")
+	recon, _ := NewReconstructor(dataA, 700, "md5")
 	out1, _ := recon.Reconstruct(results1)
 	if !bytes.Equal(out1, dataA) {
 		t.Error("round 1 reconstruction mismatch")
 	}
 
-	recon2 := NewReconstructor(dataB, 700, "md5")
+	recon2, _ := NewReconstructor(dataB, 700, "md5")
 	out2, _ := recon2.Reconstruct(results2)
 	if !bytes.Equal(out2, dataB) {
 		t.Error("round 2 reconstruction mismatch")
@@ -1454,7 +1454,7 @@ func TestMatchStatsConsistency(t *testing.T) {
 		}
 
 		sig := GenerateSignature(oldF, blockSize, "md5")
-		eng := NewMatchEngine(blockSize, "md5")
+		eng, _ := NewMatchEngine(blockSize, "md5")
 		eng.LoadSignature(sig)
 		eng.Search(newF)
 

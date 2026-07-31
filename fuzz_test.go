@@ -53,11 +53,11 @@ func FuzzDeltaRoundTrip(t *testing.F) {
 		sig := GenerateSignature(oldFile, blockSize, algo)
 
 		// Serial path
-		eng := NewMatchEngine(blockSize, algo)
+		eng, _ := NewMatchEngine(blockSize, algo)
 		eng.LoadSignature(sig)
 		serial := eng.Search(newFile)
 
-		recon := NewReconstructor(oldFile, blockSize, algo)
+		recon, _ := NewReconstructor(oldFile, blockSize, algo)
 		result, err := recon.Reconstruct(serial)
 		if err != nil {
 			t.Fatalf("reconstruct serial: %v", err)
@@ -68,7 +68,7 @@ func FuzzDeltaRoundTrip(t *testing.F) {
 		}
 
 		// Streaming path parity
-		eng2 := NewMatchEngine(blockSize, algo)
+		eng2, _ := NewMatchEngine(blockSize, algo)
 		eng2.LoadSignature(sig)
 		var streamResults []MatchResult
 		err = eng2.SearchReader(bytes.NewReader(newFile), int64(len(newFile)), func(mr MatchResult) error {
@@ -84,7 +84,7 @@ func FuzzDeltaRoundTrip(t *testing.F) {
 			t.Fatalf("SearchReader: %v", err)
 		}
 
-		recon2 := NewReconstructor(oldFile, blockSize, algo)
+		recon2, _ := NewReconstructor(oldFile, blockSize, algo)
 		result2, err := recon2.Reconstruct(streamResults)
 		if err != nil {
 			t.Fatalf("reconstruct stream: %v", err)
@@ -154,7 +154,7 @@ func FuzzWireInstructions(t *testing.F) {
 		rand.Read(data)
 		bs := CalculateBlockSize(int64(sz))
 		sig := GenerateSignature(data, bs, "md5")
-		eng := NewMatchEngine(bs, "md5")
+		eng, _ := NewMatchEngine(bs, "md5")
 		eng.LoadSignature(sig)
 		insts := eng.Search(data)
 		t.Add(data, bs, "md5")
@@ -173,7 +173,7 @@ func FuzzWireInstructions(t *testing.F) {
 		}
 
 		sig := GenerateSignature(data, blockSize, algo)
-		eng := NewMatchEngine(blockSize, algo)
+		eng, _ := NewMatchEngine(blockSize, algo)
 		eng.LoadSignature(sig)
 		insts := eng.Search(data)
 
@@ -318,7 +318,7 @@ func FuzzReconstructBadBlockIdx(t *testing.F) {
 
 		basis := make([]byte, int(blockSize)*10)
 
-		recon := NewReconstructor(basis, blockSize, "md5")
+		recon, _ := NewReconstructor(basis, blockSize, "md5")
 		_, err := recon.Reconstruct([]MatchResult{
 			{IsLiteral: false, BlockIdx: blockIdx},
 		})
@@ -441,7 +441,7 @@ func FuzzSearchReaderError(t *testing.F) {
 		}
 
 		sig := GenerateSignature(basis, blockSize, algo)
-		eng := NewMatchEngine(blockSize, algo)
+		eng, _ := NewMatchEngine(blockSize, algo)
 		eng.LoadSignature(sig)
 
 		var errVal error
@@ -487,7 +487,7 @@ func FuzzSearchReaderError(t *testing.F) {
 		}
 
 		if len(results) > 0 {
-			recon := NewReconstructor(basis, blockSize, algo)
+			recon, _ := NewReconstructor(basis, blockSize, algo)
 			if _, recErr := recon.Reconstruct(results); recErr != nil {
 				// Partial reconstruction may fail — just don't panic.
 			}

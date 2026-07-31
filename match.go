@@ -83,16 +83,16 @@ type MatchEngine struct {
 
 // NewMatchEngine creates a new match engine.
 // NewMatchEngine 创建匹配引擎。
-func NewMatchEngine(blockSize int32, strongAlgo string) *MatchEngine {
+func NewMatchEngine(blockSize int32, strongAlgo string) (*MatchEngine, error) {
 	algo, err := GetAlgo(strongAlgo)
 	if err != nil {
-		algo = MustGet(GetDefault())
+		return nil, err
 	}
 	return &MatchEngine{
 		blockSize:  blockSize,
 		strongHash: algo.New,
 		cachedHash: algo.New(),
-	}
+	}, nil
 }
 
 func (me *MatchEngine) LoadSignature(sig *Signature) {
@@ -120,7 +120,7 @@ func (me *MatchEngine) buildHashTable() {
 			h = (cs.Sum1 + cs.Sum1>>16) & 0xFFFF
 		} else {
 			// Large table: full 32-bit sum modulo odd table size.
-			// Odd divisor ensures high bits of sum2 contribute.
+			// Odd divisor ensures high bits of Sum1 contribute to bucket index.
 			h = cs.Sum1 % ts
 		}
 		me.hashTable[h] = append(me.hashTable[h], hashEntry{
@@ -314,6 +314,10 @@ func (me *MatchEngine) SearchReader(r io.Reader, fileSize int64, fn func(MatchRe
 		if bufLen == 0 {
 			return err
 		}
+		// Partial data available: only suppress EOF/UnexpectedEOF; real I/O errors must propagate.
+		if err != io.EOF && err != io.ErrUnexpectedEOF {
+			return err
+		}
 	}
 	if bufLen < int(me.blockSize) {
 		return fn(MatchResult{IsLiteral: true, Data: buf[:bufLen], Offset: 0})
@@ -344,7 +348,9 @@ func (me *MatchEngine) SearchReader(r io.Reader, fileSize int64, fn func(MatchRe
 			}
 			if bufEnd < needEnd {
 				if err := me.shiftAndFill(r, buf, &bufLen, &bufBase, literalStart, fileSize, needEnd); err != nil {
-					_ = me.flushRemaining(fn, buf, bufBase, bufLen, &literalStart, fileSize)
+					if flushErr := me.flushRemaining(fn, buf, bufBase, bufLen, &literalStart, fileSize); flushErr != nil {
+						return flushErr
+					}
 					if err == io.EOF || err == io.ErrUnexpectedEOF {
 						return nil
 					}
@@ -352,8 +358,7 @@ func (me *MatchEngine) SearchReader(r io.Reader, fileSize int64, fn func(MatchRe
 				}
 				bufEnd = bufBase + int64(bufLen)
 				if offset+blockSize64 > bufEnd {
-					_ = me.flushRemaining(fn, buf, bufBase, bufLen, &literalStart, fileSize)
-					return nil
+					return me.flushRemaining(fn, buf, bufBase, bufLen, &literalStart, fileSize)
 				}
 			}
 			nextBufCheck = offset + blockSize64
@@ -798,7 +803,9 @@ func (me *MatchEngine) fork() *MatchEngine {
 // For large files, prefer GenerateSignatureReader to stream from disk
 // and avoid holding the entire file in memory.
 func GenerateSignature(data []byte, blockSize int32, strongAlgo string) *Signature {
-	return GenerateSignatureReader(bytes.NewReader(data), int64(len(data)), blockSize, strongAlgo)
+	// bytes.NewReader never fails, so the error is unreachable.
+	sig, _ := GenerateSignatureReader(bytes.NewReader(data), int64(len(data)), blockSize, strongAlgo)
+	return sig
 }
 
 // GenerateSignatureParallel generates block signatures from in-memory data
@@ -812,16 +819,16 @@ func GenerateSignature(data []byte, blockSize int32, strongAlgo string) *Signatu
 // GenerateSignatureParallel 使用多 goroutine 并行生成块签名。
 // 块均匀分配给 worker，每个 worker 独立计算 Checksum1 + 强校验和。
 // 复用 Checksum1 的 SIMD 加速路径。大文件加速比接近线性。
-func GenerateSignatureParallel(data []byte, blockSize int32, strongAlgo string) *Signature {
+func GenerateSignatureParallel(data []byte, blockSize int32, strongAlgo string) (*Signature, error) {
 	fileSize := int64(len(data))
 	numBlocks := (fileSize + int64(blockSize) - 1) / int64(blockSize)
 	if numBlocks <= 1 {
-		return GenerateSignature(data, blockSize, strongAlgo)
+		return GenerateSignature(data, blockSize, strongAlgo), nil
 	}
 
 	algo, err := GetAlgo(strongAlgo)
 	if err != nil {
-		algo = MustGet(GetDefault())
+		return nil, err
 	}
 
 	sig := &Signature{
@@ -1086,7 +1093,7 @@ func GenerateSignatureParallel(data []byte, blockSize int32, strongAlgo string) 
 	}
 
 	wg.Wait()
-	return sig
+	return sig, nil
 }
 
 // GenerateSignatureReader generates block signatures from an io.Reader,
@@ -1094,7 +1101,7 @@ func GenerateSignatureParallel(data []byte, blockSize int32, strongAlgo string) 
 // Uses 8-way AVX2 acceleration for md5 when available.
 // GenerateSignatureReader 从 io.Reader 流式生成块签名，避免全量读入内存。
 // md5 + AVX512 可用时使用 16 路 SIMD；否则 AVX2 8 路；否则标量回退。
-func GenerateSignatureReader(r io.Reader, fileSize int64, blockSize int32, strongAlgo string) *Signature {
+func GenerateSignatureReader(r io.Reader, fileSize int64, blockSize int32, strongAlgo string) (*Signature, error) {
 	sig := &Signature{
 		BlockSize: blockSize,
 		FileSize:  fileSize,
@@ -1105,7 +1112,7 @@ func GenerateSignatureReader(r io.Reader, fileSize int64, blockSize int32, stron
 
 	algo, err := GetAlgo(strongAlgo)
 	if err != nil {
-		algo = MustGet(GetDefault())
+		return nil, err
 	}
 
 	// Pre-allocate one contiguous buffer for all Sum2 slices.
@@ -1131,7 +1138,7 @@ func GenerateSignatureReader(r io.Reader, fileSize int64, blockSize int32, stron
 					remain = int64(blockSize)
 				}
 				if _, err := io.ReadFull(r, batchBuf[total:total+int(remain)]); err != nil {
-					return sig
+					return sig, err
 				}
 				total += int(remain)
 			}
@@ -1185,7 +1192,7 @@ func GenerateSignatureReader(r io.Reader, fileSize int64, blockSize int32, stron
 				}
 			}
 		}
-		return sig
+		return sig, nil
 	}
 
 	// AVX2 8-way md5 fast path: batch-read 8 blocks at a time for SIMD.
@@ -1207,7 +1214,7 @@ func GenerateSignatureReader(r io.Reader, fileSize int64, blockSize int32, stron
 					remain = int64(blockSize)
 				}
 				if _, err := io.ReadFull(r, batchBuf[total:total+int(remain)]); err != nil {
-					return sig
+					return sig, err
 				}
 				total += int(remain)
 			}
@@ -1263,7 +1270,7 @@ func GenerateSignatureReader(r io.Reader, fileSize int64, blockSize int32, stron
 				}
 			}
 		}
-		return sig
+		return sig, nil
 	}
 
 	// NEON 4-way md5 fast path for ARM64.
@@ -1284,7 +1291,7 @@ func GenerateSignatureReader(r io.Reader, fileSize int64, blockSize int32, stron
 					remain = int64(blockSize)
 				}
 				if _, err := io.ReadFull(r, batchBuf[total:total+int(remain)]); err != nil {
-					return sig
+					return sig, err
 				}
 				total += int(remain)
 			}
@@ -1337,7 +1344,7 @@ func GenerateSignatureReader(r io.Reader, fileSize int64, blockSize int32, stron
 				}
 			}
 		}
-		return sig
+		return sig, nil
 	}
 
 	// AVX2 8-way sha256 fast path
@@ -1358,7 +1365,7 @@ func GenerateSignatureReader(r io.Reader, fileSize int64, blockSize int32, stron
 					remain = int64(blockSize)
 				}
 				if _, err := io.ReadFull(r, batchBuf[total:total+int(remain)]); err != nil {
-					return sig
+					return sig, err
 				}
 				total += int(remain)
 			}
@@ -1411,7 +1418,7 @@ func GenerateSignatureReader(r io.Reader, fileSize int64, blockSize int32, stron
 				}
 			}
 		}
-		return sig
+		return sig, nil
 	}
 
 	// Scalar path: non-md5/sha256 algorithms or platforms without AVX2.
@@ -1423,7 +1430,7 @@ func GenerateSignatureReader(r io.Reader, fileSize int64, blockSize int32, stron
 				remain = int64(blockSize)
 			}
 			if _, err := io.ReadFull(r, buf[:remain]); err != nil {
-				break
+				return sig, err
 			}
 			block := buf[:remain]
 			start := int(i) * algo.Length
@@ -1444,7 +1451,7 @@ func GenerateSignatureReader(r io.Reader, fileSize int64, blockSize int32, stron
 				remain = int64(blockSize)
 			}
 			if _, err := io.ReadFull(r, buf[:remain]); err != nil {
-				break
+				return sig, err
 			}
 			block := buf[:remain]
 
@@ -1463,7 +1470,7 @@ func GenerateSignatureReader(r io.Reader, fileSize int64, blockSize int32, stron
 		}
 	}
 
-	return sig
+	return sig, nil
 }
 
 func CalculateBlockSize(fileSize int64) int32 {

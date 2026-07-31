@@ -93,6 +93,10 @@ func WireDecodeSignature(r io.Reader) (*Signature, error) {
 			Sum1:  binary.BigEndian.Uint32(fixed[4:8]),
 		}
 		sum2Len := int(fixed[8])
+		// Cap at 64 bytes (SHA-512 size) to limit allocation from corrupt wire data.
+		if sum2Len > 64 {
+			return nil, fmt.Errorf("block %d sum2 length %d exceeds max 64 / 块%d sum2长度 %d 超过上限64", i, sum2Len, i, sum2Len)
+		}
 
 		bs.Sum2 = make([]byte, sum2Len)
 		if _, err := io.ReadFull(r, bs.Sum2); err != nil {
@@ -155,9 +159,18 @@ func WireEncodeInstructions(w io.Writer, insts []MatchResult) error {
 // Designed for low-memory receivers: avoids loading all instructions + literal
 // data into memory at once.
 //
+// Note: MatchResult.Offset is set to the instruction index (not file byte offset).
+// The receiver cannot compute file offsets without the block size (which is in the
+// signature, not the instruction stream).  Reconstruction functions (Reconstruct,
+// WriteInstruction) do not use Offset — it exists only for sender-side ordering.
+//
 // DecodeInstructionsStream 流式解码指令，每读取一条指令就回调 fn。
 // fn 收到的 MatchResult.Data 仅回调期间有效（使用可复用缓冲区），不得持有引用。
 // 用于低内存接收端：避免将全部指令+字面量数据加载到内存。
+//
+// 注意：MatchResult.Offset 设为指令序号（非文件字节偏移）。接收端没有 blockSize
+// 信息（在 signature 中，不在 instruction stream 中），无法计算文件偏移。
+// Reconstruct / WriteInstruction 不使用 Offset。Offset 仅用于发送端排序。
 func DecodeInstructionsStream(r io.Reader, fn func(inst MatchResult) error) error {
 	header := make([]byte, 4)
 	if _, err := io.ReadFull(r, header); err != nil {
@@ -228,6 +241,10 @@ func DecodeInstructionsStream(r io.Reader, fn func(inst MatchResult) error) erro
 // calling fn for each.  Batches are prefixed with a 4-byte big-endian count;
 // a count of 0 signals end-of-stream.  This is the receiver-side counterpart
 // to the batched-send pattern used by streaming senders.
+//
+// MatchResult.Offset is set to the instruction index within the batch (not a
+// file byte offset — the receiver cannot compute file offsets without knowing
+// the block size from the signature).  Reconstruction functions do not use Offset.
 //
 // DecodeInstructionsStreamAll 从 r 读取多个批次的指令。
 // 每批以 4 字节 count 开头，count=0 表示结束。
