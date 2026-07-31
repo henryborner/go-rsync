@@ -2,6 +2,7 @@ package delta
 
 import (
 	"bytes"
+	"fmt"
 	"io"
 )
 
@@ -75,7 +76,8 @@ func RoundTrip(oldFile, newFile []byte, blockSize int32, algo string) ([]byte, e
 		return nil, err
 	}
 	if !bytes.Equal(result, newFile) {
-		return result, io.ErrUnexpectedEOF
+		return result, fmt.Errorf("roundtrip mismatch: result %d bytes != newFile %d bytes",
+			len(result), len(newFile))
 	}
 	return result, nil
 }
