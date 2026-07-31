@@ -1,7 +1,7 @@
-// Package delta implements the rsync delta-transfer algorithm in Go.
+// Package delta implements a binary delta-transfer algorithm in Go.
 //
 // It provides a complete toolkit for binary delta compression:
-// rolling checksum matching (rsync-style), block signature generation,
+// rolling checksum matching, block signature generation,
 // instruction-based file reconstruction, and a binary wire protocol
 // for sending deltas over the network.
 //

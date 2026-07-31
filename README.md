@@ -4,7 +4,7 @@
 [![Go](https://img.shields.io/badge/Go-1.26+-blue)](https://go.dev)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
-**Go implementation of the rsync delta-transfer algorithm** — with AVX2/AVX-512 accelerated MD5 (8-way + 16-way SIMD). Rolling checksum matching, block signature generation, file reconstruction, and a binary wire protocol.
+**Go implementation of a binary delta-transfer algorithm** — with AVX2/AVX-512 accelerated MD5 (8-way + 16-way SIMD). Rolling checksum matching, block signature generation, file reconstruction, and a binary wire protocol.
 
 Built to power [Shuttle](https://github.com/henryborner/shuttle), my own Windows-native file sync tool — this library was extracted from Shuttle and is its core delta-transfer engine.
 

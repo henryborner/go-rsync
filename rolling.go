@@ -25,7 +25,7 @@ func (rs *RollingSum) Reset(data []byte) {
 // and updates s1/s2. Uses uint32 natural overflow, no modulo,
 // no type conversions.
 // Roll 滚动窗口：移除一个旧字节，加入一个新字节，更新 s1/s2。
-// 使用 uint32 自然溢出（同 rsync），无取模、无类型转换。
+// 使用 uint32 自然溢出，无取模、无类型转换。
 func (rs *RollingSum) Roll(oldByte, newByte byte, blockLen int32) {
 	old := uint32(oldByte) + CHAR_OFFSET
 	new := uint32(newByte) + CHAR_OFFSET

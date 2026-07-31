@@ -461,11 +461,11 @@ func BenchmarkChecksum1(b *testing.B) {
 func TestExampleUsage(t *testing.T) {
 
 	oldFile := []byte("The quick brown fox jumps over the lazy dog. " +
-		"This is an example of rsync-style delta transfer.")
+		"This is an example of delta transfer.")
 	// new file (with insertion in the middle)
 	newFile := []byte("The quick brown fox jumps over the lazy dog. " +
 		"INSERTED CONTENT HERE. " +
-		"This is an example of rsync-style delta transfer.")
+		"This is an example of delta transfer.")
 
 	blockSize := int32(32)
 

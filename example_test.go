@@ -10,10 +10,10 @@ import (
 // Example demonstrates a complete roundtrip: signature → match → reconstruct.
 func Example() {
 	oldFile := []byte("The quick brown fox jumps over the lazy dog. " +
-		"This is an example of rsync-style delta transfer.")
+		"This is an example of delta transfer.")
 	newFile := []byte("The quick brown fox jumps over the lazy dog. " +
 		"INSERTED CONTENT HERE. " +
-		"This is an example of rsync-style delta transfer.")
+		"This is an example of delta transfer.")
 
 	blockSize := int32(32)
 
@@ -31,7 +31,7 @@ func Example() {
 
 	// Output:
 	// true
-	// Transfer: 73%
+	// Transfer: 70%
 }
 
 // Example_streaming demonstrates the low-memory streaming API.
@@ -39,10 +39,10 @@ func Example() {
 // an io.Reader and delivers results via callback as they are found.
 func Example_streaming() {
 	oldFile := []byte("The quick brown fox jumps over the lazy dog. " +
-		"This is an example of rsync-style delta transfer.")
+		"This is an example of delta transfer.")
 	newFile := []byte("The quick brown fox jumps over the lazy dog. " +
 		"INSERTED CONTENT HERE. " +
-		"This is an example of rsync-style delta transfer.")
+		"This is an example of delta transfer.")
 
 	blockSize := int32(32)
 	sig := delta.GenerateSignature(oldFile, blockSize, "md5")
@@ -70,7 +70,7 @@ func Example_streaming() {
 
 	// Output:
 	// true
-	// Transfer: 73%
+	// Transfer: 70%
 }
 
 // Example_parallel demonstrates parallel search for multi-core speedup.
