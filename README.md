@@ -69,11 +69,11 @@ delta.ApplyDeltaStream(oldFile, conn, outputFile, blockSize, "md5")
 
 | Benchmark | Time | Throughput |
 | ----------- | ------ | ------------ |
-| `GenerateSignature` (md5) | ~345 µs | **2.90 GB/s** |
-| `GenerateSignature` (xxh64) | ~152 µs | 6.57 GB/s |
+| `GenerateSignature` (md5) | ~341 µs | **2.93 GB/s** |
+| `GenerateSignature` (xxh64) | ~151 µs | 6.62 GB/s |
 | `GenerateSignature` (xxh3) | ~113 µs | 8.8 GB/s |
-| `GenerateSignature` (sha256) | ~617 µs | 1.62 GB/s |
-| `GenerateSignatureParallel` (100MB, 32-thread) | ~2.63 ms | **39.9 GB/s** |
+| `GenerateSignature` (sha256) | ~616 µs | 1.62 GB/s |
+| `GenerateSignatureParallel` (100MB, 32-thread) | ~2.37 ms | **44.3 GB/s** |
 
 **Intel Xeon Platinum @ 2.5GHz, AVX-512 enabled:**
 
@@ -84,15 +84,18 @@ delta.ApplyDeltaStream(oldFile, conn, outputFile, blockSize, "md5")
 | `MD5x16Core_Bulk` (AVX-512 raw, 1000×64B×16) | 94 µs | **10.86 GB/s** |
 | `SignatureReader/10MB_32KB` | 2.88 ms | 3.64 GB/s |
 
-**Checksum1 (rolling weak checksum) throughput:**
+**Checksum1 (rolling weak checksum) throughput (Ryzen 9 8940HX):**
 
-| Data size | AVX2 (Ryzen) | AVX2 (Xeon) | rsync-AVX2 (Xeon) |
-| ----------- | :---: | :---: | :---: |
-| 1 KB | **63 GB/s** | 37 GB/s | 43 GB/s |
-| 64 KB | **77 GB/s** | 44 GB/s | 44 GB/s |
-| 1 MB | **77 GB/s** | 44 GB/s | — |
+| Data size | AVX2 |
+| ----------- | :---: |
+| 1 KB | **64 GB/s** |
+| 64 KB | **80 GB/s** |
+| 1 MB | **80 GB/s** |
 
-> 64KB within 1.4% of rsync on Xeon. AVX-512 raw MD5 core hits 10.9 GB/s.
+> Complete results — per-size curve, allocation counts, and the rsync AVX2
+> comparison (deterministic + random data): [docs/benchmarks.md](docs/benchmarks.md).
+> The former Xeon column was removed: it came from a cache-limited cloud VM
+> with unrecorded methodology.
 
 Run on your own machine:
 
