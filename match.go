@@ -49,6 +49,19 @@ const CHUNK_SIZE = 32 * 1024
 // runs of identical blocks) turns the inner loop into an O(file_size ×
 // chain_length) scan.  The skipped data is sent literally — always correct,
 // only slightly affecting compression ratio.
+//
+// Note (open-addressing rewrite): maxProbeLen (32) bounds the whole probe
+// chain *before* sum1-matched candidates are ever compared, so chainLen can
+// never reach maxChainLen.  It is kept as a defensive ceiling in case
+// maxProbeLen is ever raised above it.  The effective per-offset cap is now
+// maxProbeLen (32) — more conservative than the old 1024 (may give up
+// sooner on pathological same-block clusters, lowering compression ratio
+// slightly but never correctness).
+// 注意（开放寻址重写后）：maxProbeLen(32) 在 sum1 匹配候选比较之前就先
+// 截断整个探测链，因此 chainLen 永远到不了 maxChainLen。保留它是作为
+// 未来 maxProbeLen 上调时的防御性上限。当前实际生效的上限是 maxProbeLen
+// (32)——比旧的 1024 更保守（病态同块聚集时可能更早放弃，轻微降低压缩率，
+// 但绝不影响正确性）。
 const maxChainLen = 1024
 
 // maxProbeLen caps the open-addressing probe chain length at a single file
