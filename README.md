@@ -65,45 +65,53 @@ delta.ApplyDeltaStream(oldFile, conn, outputFile, blockSize, "md5")
 
 ## 📊 Benchmarks
 
-**AMD Ryzen 9 8940HX (Zen 4), single-threaded, 1MB data, blockSize≈700:**
+All numbers below: **AMD Ryzen 9 8940HX (Zen 4, 16 cores / 32 threads)**,
+Windows 11, Go 1.26.5 — the same machine used for the full tables in
+[docs/benchmarks.md](docs/benchmarks.md).
+
+**GenerateSignature (1MB data, blockSize=700, single-threaded):**
+
+| Hash | Path | Time | Throughput |
+| ----------- | ----------- | ------ | ------------ |
+| md5 | AVX2 8-way | ~341 µs | **2.93 GB/s** |
+| xxh64 | cespare/xxhash | ~151 µs | 6.62 GB/s |
+| xxh3 | zeebo/xxh3 | ~116 µs | 8.62 GB/s |
+| sha256 | stdlib SHA-NI | ~616 µs | 1.62 GB/s |
+
+**GenerateSignatureParallel (md5, 100MB, blockSize≈10KB, 32-thread):**
+
+| Benchmark | Path | Time | Throughput |
+| ----------- | ----------- | ------ | ------------ |
+| `GenerateSignatureParallel` | AVX2 8-way | ~2.37 ms | **44.3 GB/s** |
+
+> `GenerateSignature` prefers the stdlib SHA-NI hardware path when the CPU has
+> SHA-NI; the 8-way AVX2 SHA-256 core is only used on non-SHA-NI CPUs.
+
+**MD5 SIMD cores (zero-alloc):**
 
 | Benchmark | Time | Throughput |
 | ----------- | ------ | ------------ |
-| `GenerateSignature` (md5) | ~341 µs | **2.93 GB/s** |
-| `GenerateSignature` (xxh64) | ~151 µs | 6.62 GB/s |
-| `GenerateSignature` (xxh3) | ~116 µs | 8.62 GB/s |
-| `GenerateSignature` (sha256) | ~616 µs | 1.62 GB/s |
-| `GenerateSignatureParallel` (100MB, 32-thread) | ~2.37 ms | **44.3 GB/s** |
+| `MD5x8_Bulk` (AVX2 8-way, 32KB) | ~7.7 µs | **4.26 GB/s** |
+| `MD5x8Core_Bulk` (AVX2 raw, 1000×64B×8) | ~81 µs | 6.31 GB/s |
+| `MD5x16Core_Bulk` (AVX-512 raw, 1000×64B×16) | ~91 µs | **11.24 GB/s** |
 
-**Intel Xeon Platinum @ 2.5GHz, AVX-512 enabled:**
+**Checksum1 (rolling weak checksum, AVX2 path):**
 
-| Benchmark | Time | Throughput |
-| ----------- | ------ | ------------ |
-| `MD5x8_Bulk` (AVX2 8-way, 32KB) | 11.5 µs | **2.84 GB/s** |
-| `MD5x8Core_Bulk` (AVX2 raw, 1000×64B×8) | 145 µs | 3.54 GB/s |
-| `MD5x16Core_Bulk` (AVX-512 raw, 1000×64B×16) | 94 µs | **10.86 GB/s** |
-| `SignatureReader/10MB_32KB` | 2.88 ms | 3.64 GB/s |
-
-**Checksum1 (rolling weak checksum) throughput (Ryzen 9 8940HX):**
-
-| Data size | AVX2 |
+| Data size | Throughput |
 | ----------- | :---: |
 | 1 KB | **64 GB/s** |
 | 64 KB | **80 GB/s** |
 | 1 MB | **80 GB/s** |
 
-> Complete results — per-size curve, allocation counts, and the rsync AVX2
-> comparison (deterministic + random data): [docs/benchmarks.md](docs/benchmarks.md).
-> The former Xeon column was removed: it came from a cache-limited cloud VM
-> with unrecorded methodology.
+> Per-size curves, allocation counts (B/op, allocs/op), the streaming
+> `SignatureReader` results, and the rsync AVX2 comparison (deterministic +
+> random data): [docs/benchmarks.md](docs/benchmarks.md).
 
 Run on your own machine:
 
 ```bash
-go test -bench='BenchmarkSignature$|BenchmarkMD5x8_Bulk|BenchmarkChecksum1' -benchmem .
+go test -bench='BenchmarkSignature$|BenchmarkSignatureXXH64$|BenchmarkSignatureXXH3$|BenchmarkSignatureSHA256$|BenchmarkSignatureParallel$|BenchmarkMD5x8_Bulk$|BenchmarkMD5x8Core_Bulk$|BenchmarkMD5x16Core_Bulk$|BenchmarkChecksum1$|BenchmarkSignatureReader$' -benchmem -count=3 .
 ```
-
-> Full benchmark results — every sub-benchmark with per-operation allocation counts (B/op, allocs/op): **[docs/benchmarks.md](docs/benchmarks.md)**.
 
 ## 📁 Package layout
 

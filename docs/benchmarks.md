@@ -12,32 +12,37 @@
 | L3 cache | 64 MB (full) |
 | OS / Go | Windows 11 / go1.26.5 |
 
-## GenerateSignature (1 MB data, single-threaded)
+## GenerateSignature (1 MB data, single-threaded, blockSize=700)
 
-| Algorithm | Time | Throughput | B/op | allocs/op |
-|-----------|------|-----------|------|-----------|
-| md5 | ~341 µs | 2.93 GB/s | 120,928 | 5 |
-| sha256 | ~616 µs | 1.62 GB/s | 140,064 | 5 |
-| xxh64 | ~151 µs | 6.62 GB/s | 103,200 | 5 |
-| xxh3 | ~116 µs | 8.62 GB/s | 115,488 | 5 |
+| Algorithm | Path | Time | Throughput | B/op | allocs/op |
+|-----------|------|------|-----------|------|-----------|
+| md5 | AVX2 8-way (`md5x8_amd64.s`) | ~341 µs | 2.93 GB/s | 120,928 | 5 |
+| sha256 | stdlib SHA-NI (`crypto/sha256`) | ~616 µs | 1.62 GB/s | 140,064 | 5 |
+| xxh64 | cespare/xxhash | ~151 µs | 6.62 GB/s | 103,200 | 5 |
+| xxh3 | zeebo/xxh3 | ~116 µs | 8.62 GB/s | 115,488 | 5 |
 
-## GenerateSignatureParallel
+## GenerateSignatureParallel (md5)
 
-| Data | Time | Throughput | B/op | allocs/op |
-|------|------|-----------|------|-----------|
-| 1 MB | ~129 µs | 8.1 GB/s | 120,386 | 68 |
-| 10 MB | ~389 µs | 26.9 GB/s | 734,784 | 68 |
-| 100 MB | ~2.37 ms | 44.3 GB/s | 734,794 | 68 |
+| Data | blockSize | Path | Time | Throughput | B/op | allocs/op |
+|------|-----------|------|------|-----------|------|-----------|
+| 1 MB | 700 | AVX2 8-way | ~129 µs | 8.1 GB/s | 120,386 | 68 |
+| 10 MB | 1048 | AVX2 8-way | ~389 µs | 26.9 GB/s | 734,784 | 68 |
+| 100 MB | 10485 | AVX2 8-way | ~2.37 ms | 44.3 GB/s | 734,794 | 68 |
 
-## SignatureReader (streaming)
+This path has **no AVX-512 16-way branch** — md5 stays on 8-way AVX2 at every
+block size; the 44.3 GB/s comes from 32-way parallelism, not AVX-512.
 
-| Config | Time | Throughput | B/op | allocs/op |
-|--------|------|-----------|------|-----------|
-| 10MB_700B | ~3.30 ms | 3.18 GB/s | 1,095,776 | 5 |
-| 10MB_32KB | ~3.22 ms | 3.26 GB/s | 548,192 | 5 |
-| 10MB_128KB | ~3.30 ms | 3.18 GB/s | 2,103,392 | 5 |
-| 100MB_700B | ~33.4 ms | 3.15 GB/s | 10,803,296 | 5 |
-| 100MB_128KB | ~32.3 ms | 3.25 GB/s | 2,159,968 | 5 |
+## SignatureReader (streaming, md5)
+
+| Config | Path | Time | Throughput | B/op | allocs/op |
+|--------|------|------|-----------|------|-----------|
+| 10MB_700B | AVX2 8-way | ~3.30 ms | 3.18 GB/s | 1,095,776 | 5 |
+| 10MB_32KB | AVX-512 16-way | ~3.22 ms | 3.26 GB/s | 548,192 | 5 |
+| 10MB_128KB | AVX-512 16-way | ~3.30 ms | 3.18 GB/s | 2,103,392 | 5 |
+| 100MB_700B | AVX2 8-way | ~33.4 ms | 3.15 GB/s | 10,803,296 | 5 |
+| 100MB_128KB | AVX-512 16-way | ~32.3 ms | 3.25 GB/s | 2,159,968 | 5 |
+
+md5 dispatch: blockSize ≥ 2 KB → AVX-512 16-way, otherwise AVX2 8-way.
 
 ## Checksum1 (rolling weak checksum — zero-alloc)
 
@@ -289,6 +294,15 @@ g++ -O2 -mavx2 -DHAVE_CONFIG_H -DUSE_ROLL_SIMD -DUSE_ROLL_ASM -I. \
   (~103–140 KB for 1 MB input, 5 allocs).
 - `SignatureReader` allocates its streaming buffers (~548 KB–10.8 MB depending
   on block size / file size, fixed 5 allocs/op).
+- **SHA-256 dispatch**: `GenerateSignature` uses the stdlib SHA-NI hardware
+  path (`crypto/sha256`) whenever the CPU supports SHA-NI. The project's 8-way
+  AVX2 SHA-256 core (`sha256x8_amd64.s`) is deliberately disabled in that case
+  (`sha256x8available()` = AVX2 && !SHA-NI) because stdlib is faster. The
+  `sha256` row above therefore measures **SHA-NI**, not the 8-way AVX2 core —
+  which has no benchmark here because this machine (Zen 4) has SHA-NI.
+- **MD5 dispatch**: blockSize ≥ 2 KB → AVX-512 16-way (`md5x16_amd64.s`);
+  smaller blocks → AVX2 8-way (`md5x8_amd64.s`). `GenerateSignatureParallel`
+  has no AVX-512 branch and stays on 8-way AVX2 at every block size.
 - ARM64 NEON results (Checksum1 UDOT/VUMULL, 4-way MD5) are measured on ARM64
   CI (ubuntu-24.04-arm); see [neon-checksum.md](neon-checksum.md).
 
