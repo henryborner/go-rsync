@@ -100,6 +100,8 @@ Run on your own machine:
 go test -bench='BenchmarkSignature$|BenchmarkMD5x8_Bulk|BenchmarkChecksum1' -benchmem .
 ```
 
+> Full benchmark results — every sub-benchmark with per-operation allocation counts (B/op, allocs/op): **[docs/benchmarks.md](docs/benchmarks.md)**.
+
 ## 📁 Package layout
 
 | File | Purpose |
@@ -147,12 +149,14 @@ go test -bench='BenchmarkSignature$|BenchmarkMD5x8_Bulk|BenchmarkChecksum1' -ben
 | `docs/checksum-engine.md` | Checksum engine: algorithm, loop structure, conventions, optimization history, SSE2 appendix |
 | `docs/md5-simd.md` | MD5 SIMD reference: architecture, techniques, safety checklist |
 | `docs/neon-checksum.md` | ARM64 NEON rolling checksum: UDOT/VUMULL tiers, WORD encodings, performance |
+| `docs/benchmarks.md` | Full benchmark tables with per-op allocations (B/op, allocs/op) |
 
 ## 📚 Documentation
 
 - **[Checksum Engine](docs/checksum-engine.md)** — Rolling checksum algorithm, AVX2/SSE2 loop structure, Go Plan 9 conventions, optimization history (v0→v6), register map, test coverage, performance data.
 - **[MD5 SIMD](docs/md5-simd.md)** — AVX2/AVX-512 parallel MD5 architecture, gather/transpose techniques, assembly notes, safety checklist.
 - **[NEON Checksum](docs/neon-checksum.md)** — ARM64 NEON rolling checksum: UDOT/VUMULL dispatch, WORD encodings, QEMU/CI verification.
+- **[Benchmarks](docs/benchmarks.md)** — Complete benchmark tables with per-operation allocation counts.
 
 ## 🔗 Related
 
