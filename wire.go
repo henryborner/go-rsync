@@ -71,8 +71,8 @@ func WireDecodeSignature(r io.Reader) (*Signature, error) {
 	if uint64(count) > uint64(sig.FileSize) {
 		return nil, fmt.Errorf("block count %d exceeds file size %d / 块数 %d 超过文件大小 %d", count, sig.FileSize, count, sig.FileSize)
 	}
-	// Hard cap: 100M blocks @ 700B = ~65GB, far beyond practical use.
-	// 硬上限：1亿块×700B≈65GB，远超实际场景。
+	// Hard cap: 100M blocks @ 700B = ~70GB, far beyond practical use.
+	// 硬上限：1亿块×700B≈70GB，远超实际场景。
 	const maxWireBlocks = 100_000_000
 	if count > maxWireBlocks {
 		return nil, fmt.Errorf("block count %d exceeds max %d / 块数 %d 超过上限 %d", count, maxWireBlocks, count, maxWireBlocks)
@@ -93,7 +93,7 @@ func WireDecodeSignature(r io.Reader) (*Signature, error) {
 			Sum1:  binary.BigEndian.Uint32(fixed[4:8]),
 		}
 		sum2Len := int(fixed[8])
-		// Cap at 64 bytes (SHA-512 size) to limit allocation from corrupt wire data.
+		// Cap at 64 bytes (safety bound; largest built-in digest is 32 bytes) to limit allocation from corrupt wire data.
 		if sum2Len > 64 {
 			return nil, fmt.Errorf("block %d sum2 length %d exceeds max 64 / 块%d sum2长度 %d 超过上限64", i, sum2Len, i, sum2Len)
 		}

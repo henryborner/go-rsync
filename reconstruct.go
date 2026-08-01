@@ -7,7 +7,6 @@ import (
 )
 
 // Reconstructor rebuilds files on the receiver side.
-// Reconstructor rebuilds files on the receiver side.
 // Reconstructor 文件重建器（接收端）。
 type Reconstructor struct {
 	basisFile  []byte // local old file (basis) / 本地旧文件（基础文件）
@@ -16,10 +15,6 @@ type Reconstructor struct {
 	strongHash func() hash.Hash
 }
 
-// NewReconstructor creates a reconstructor.
-// blockLens is optional: pass per-block actual lengths (from Signature.BlockSums[].Length)
-// to avoid copying extra bytes from the last block. Pass nil to use blockSize uniformly,
-// truncating by file length.
 // NewReconstructor creates a reconstructor.
 // blockLens is optional: pass per-block actual lengths (from Signature.BlockSums[].Length)
 // to avoid copying extra bytes from the last block. Pass nil to use blockSize uniformly,
@@ -43,7 +38,6 @@ func NewReconstructor(basisFile []byte, blockSize int32, strongAlgo string, bloc
 	return rc, nil
 }
 
-// Reconstruct rebuilds a file from an instruction sequence.
 // Reconstruct rebuilds a file from an instruction sequence.
 // Reconstruct 根据指令序列重建文件。
 func (rc *Reconstructor) Reconstruct(instructions []MatchResult) ([]byte, error) {
@@ -84,9 +78,6 @@ func (rc *Reconstructor) Reconstruct(instructions []MatchResult) ([]byte, error)
 // WriteInstruction writes the output of a single instruction to w (streaming
 // reconstruction, low memory). Literal instructions write Data directly;
 // match instructions copy the corresponding block from the basis file.
-// WriteInstruction writes the output of a single instruction to w (streaming
-// reconstruction, low memory). Literal instructions write Data directly;
-// match instructions copy the corresponding block from the basis file.
 // WriteInstruction 将单条指令的输出写入 w（流式重建，低内存占用）。
 // Literal 指令直接写 Data，Match 指令从 basisFile 复制对应块。
 func (rc *Reconstructor) WriteInstruction(w io.Writer, inst MatchResult) error {
@@ -115,7 +106,6 @@ func (rc *Reconstructor) WriteInstruction(w io.Writer, inst MatchResult) error {
 	return err
 }
 
-// Verify checks the reconstructed result against an expected strong checksum.
 // Verify checks the reconstructed result against an expected strong checksum.
 // Verify 验证重建结果。
 func (rc *Reconstructor) Verify(result []byte, expectedSum []byte) bool {

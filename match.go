@@ -281,13 +281,15 @@ func (me *MatchEngine) Search(data []byte) []MatchResult {
 // MatchResult.Data points into internal buffers and is only valid during fn.
 //
 // Memory usage is O(blockSize), independent of file size: at most
-// 2×blockSize + CHUNK_SIZE bytes of buffered data.  Suitable for
+// max(2×blockSize + CHUNK_SIZE, 4×CHUNK_SIZE) bytes of buffered data (the
+// 4×CHUNK_SIZE floor guards tiny block sizes).  Suitable for
 // low-memory servers and multi-GB files piped over SSH.
 //
 // SearchReader 从 io.Reader 流式执行增量匹配。
 // 每发现一条匹配/字面量指令就回调 fn，数据仅回调期间有效。
 //
-// 内存占用 O(blockSize)，与文件大小无关：最多缓冲 2×blockSize + CHUNK_SIZE 字节。
+// 内存占用 O(blockSize)，与文件大小无关：最多缓冲
+// max(2×blockSize + CHUNK_SIZE, 4×CHUNK_SIZE) 字节（4×CHUNK_SIZE 下限保护小块大小）。
 // 适合内存受限的服务器和 SSH 管道传输超大文件。
 func (me *MatchEngine) SearchReader(r io.Reader, fileSize int64, fn func(MatchResult) error) error {
 	// Small file or no checksums: stream all as literals.
@@ -1098,7 +1100,7 @@ func GenerateSignatureParallel(data []byte, blockSize int32, strongAlgo string) 
 
 // GenerateSignatureReader generates block signatures from an io.Reader,
 // avoiding loading the entire file into memory.
-// Uses 8-way AVX2 acceleration for md5 when available.
+// Uses 16-way AVX-512, 8-way AVX2, or 4-way NEON acceleration for md5 when available.
 // GenerateSignatureReader 从 io.Reader 流式生成块签名，避免全量读入内存。
 // md5 + AVX512 可用时使用 16 路 SIMD；否则 AVX2 8 路；否则标量回退。
 func GenerateSignatureReader(r io.Reader, fileSize int64, blockSize int32, strongAlgo string) (*Signature, error) {

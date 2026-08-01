@@ -1,7 +1,7 @@
 // md5x8TransposeFast — register-based 8×16 dword transpose from contiguous
 // [8][64]byte buffer to [16][8]uint32 transposed words.
 // Uses full-YMM loads + VPUNPCK shuffles instead of VPINSRD scalar inserts.
-// ~80 instructions vs ~288 for the scalar VPINSRD fallback (md5x8_load_transpose_amd64.s).
+// ~91 instructions vs ~288 for the scalar VPINSRD fallback (md5x8_load_transpose_amd64.s).
 //
 // buf: [8][64]byte — block0_64B, ..., block7_64B (contiguous, 512 bytes)
 // x:   [16][8]uint32 — output

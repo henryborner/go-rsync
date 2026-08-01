@@ -1,5 +1,5 @@
 // Shared MD5 8-way definitions used by both the pure Go reference
-// (md5x8_test.go) and the AVX2 assembly path (md5x8_amd64.s/.go).
+// (md5x8_purego.go) and the AVX2 assembly path (md5x8_amd64.s/.go).
 
 package delta
 

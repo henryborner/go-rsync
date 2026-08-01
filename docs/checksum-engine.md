@@ -15,6 +15,7 @@
 - [9. Performance Data](#9-performance-data)
 - [A. SSE2 Path](#a-sse2-path)
 - [B. Per-Size Benchmarks](#b-per-size-benchmarks)
+- [C. ARM64 NEON Path](#c-arm64-neon-path)
 
 ## 1. Overview
 
@@ -166,10 +167,13 @@ s2 += uint32(n) * uint32(n+1) / 2 * CHAR_OFFSET
 ```
 
 This correction is **not byte-identical** to the pure-Go path (which adds
-CHAR_OFFSET per-byte) when `n ∈ [65536, 92681]`. In that range,
-`n*(n+1) ≥ 2³²`, so the `uint32` intermediate multiplication wraps. The
-per-byte accumulation hits overflow at different intermediate steps,
-producing a different final `s2`.
+CHAR_OFFSET per-byte) when `floor(n*(n+1)/2³²)` is odd: the `uint32`
+intermediate `n*(n+1)` wraps before the `/2 * CHAR_OFFSET` completes, and
+the per-byte accumulation hits overflow at different intermediate steps,
+producing a different final `s2`.  The first divergence interval is
+`n ∈ [65536, 92681]`, but the condition **recurs periodically** as `n`
+grows (verified by scan up to 500 KB: `[113512, 131071]`, `[146543,
+160529]`, ...), so the divergence is not restricted to a single range.
 
 **This is not a bug.** Both `Checksum1` (signature generation) and
 `checksum1` (rolling match) use the **same** raw+correction path on any
@@ -225,7 +229,7 @@ order: `VPGATHERDD mask, (base)(index*scale), dst`.  For AVX2 the mask
 is a YMM register:
 
 ```asm
-VPGATHERDD Y2, (R8)(Y7*2), Y1    // mask first, VSIB middle, dst last
+VPGATHERDD Y2, (R8)(Y7*1), Y1    // mask first, VSIB middle, dst last
 ```
 
 (The 16-way AVX-512 form `VPGATHERDD (base)(zmm*1), K1, dst`
@@ -327,15 +331,15 @@ End-to-end delta round-trip, identical files, example usage.
 
 | Block Size | go-rsync | v1 (baseline) | Improvement |
 | ------------ | :-----------: | :-------------: | :-----------: |
-| 1 KB | 63.0 GB/s | 44.8 GB/s | +41% |
-| 64 KB | 77.0 GB/s | 51.5 GB/s | +50% |
-| 1 MB | 77.0 GB/s | 51.2 GB/s | +50% |
+| 1 KB | 64.2 GB/s | 44.8 GB/s | +43% |
+| 64 KB | 80.2 GB/s | 51.5 GB/s | +56% |
+| 1 MB | 80.4 GB/s | 51.2 GB/s | +57% |
 
 **Three-tier comparison (Ryzen 9, 64KB):**
 
 | Tier | Throughput | vs AVX2 |
 | ------ | :----------: | :-------: |
-| AVX2 (64B/iter) | 77.0 GB/s | — |
+| AVX2 (64B/iter) | 80.2 GB/s | — |
 | SSE2 (32B/iter) | 38.6 GB/s | 2.0× slower |
 | Pure Go (128B batch) | 1.9 GB/s | 40× slower |
 
@@ -349,7 +353,7 @@ VPADDW+VPMADDWD pattern as AVX2.
 | s1 reduction | VPMADDWD pair-sum | VPADDW merge + VPMADDWD pair-sum |
 | s2 reduction | VPMADDWD per-half | VPMADDWD per-half |
 | Block size | 64B/iter | 32B/iter |
-| Loop instructions | 19 | 16 |
+| Loop instructions | 19 | 19 |
 
 ## B. Per-Size Benchmarks
 

@@ -10,7 +10,8 @@ import (
 
 // sha256x8core runs 64 SHA-256 rounds on 8 parallel blocks using AVX2.
 // x points to 16 pre-transposed message words (16 × [8]uint32 = 512 bytes).
-// Each word is in x86 little-endian byte order; the core performs BSWAP internally.
+// Each word is in x86 little-endian byte order; the Go layer BSWAPs it to
+// SHA-256 big-endian before calling the core (see bitswap32 below).
 // state points to [8][8]uint32 (a,b,c,d,e,f,g,h for 8 lanes, 256 bytes).
 // wbuf points to [16][8]uint32 scratch buffer for message schedule (512 bytes).
 // saved points to [8][8]uint32 scratch buffer for initial state (256 bytes).

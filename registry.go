@@ -7,9 +7,10 @@
 //
 // # Key features
 //
-//   - Tiered checksum engine: AVX2 (64B/iter, ~77 GB/s) → SSE2 (32B/iter,
-//     ~39 GB/s) → pure Go 128B batch on amd64; portable byte-by-byte on
-//     other architectures.  Automatic CPU dispatch at runtime.
+//   - Tiered checksum engine: AVX2 (64B/iter, ~80 GB/s) → SSE2 (32B/iter,
+//     ~39 GB/s) → pure Go 128B batch on amd64; ARM64 NEON (rolling
+//     checksum + 4-way MD5); byte-by-byte elsewhere.  Automatic CPU
+//     dispatch at runtime.
 //   - Pluggable strong hash: md5, sha256, xxh64, xxh3-128 built-in.  Register
 //     your own via [Register].
 //   - Streaming I/O: generate signatures from [io.Reader], decode

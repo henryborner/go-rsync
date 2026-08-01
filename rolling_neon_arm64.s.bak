@@ -44,10 +44,10 @@ TEXT ·checksum1NEON(SB), NOSPLIT, $0-41
 
 loop:
 	// ── s1: byte sum → 4×int32 delta_s1 (.H8 ops → WORD) ──
-	WORD    $0x6E201040          // VUADDLP V0.8H, V2.16B
-	WORD    $0x6E201061          // VUADDLP V1.8H, V3.16B
+	WORD    $0x6E202840          // VUADDLP V0.8H, V2.16B (GNU as: uaddlp v0.8h, v2.16b)
+	WORD    $0x6E202861          // VUADDLP V1.8H, V3.16B (GNU as: uaddlp v1.8h, v3.16b)
 	WORD    $0x4E618400          // VADD    V0.8H, V0.8H, V1.8H
-	WORD    $0x4E601000          // VSADDLP V0.4S, V0.8H
+	WORD    $0x4E602800          // VSADDLP V0.4S, V0.8H (GNU as: saddlp v0.4s, v0.8h)
 
 	// ── s2: accumulate s1_before (32-bit, mnemonic) ──
 	VADD    V4.S4, V4.S4, V14.S4
@@ -56,13 +56,13 @@ loop:
 	WORD    $0x2E32C045          // VUMULL  V5.8H, V2.8B, V18.8B
 	WORD    $0x6E32C046          // VUMULL2 V6.8H, V2.16B, V18.16B
 	WORD    $0x4E66BCA5          // VADDP   V5.8H, V5.8H, V6.8H
-	WORD    $0x4E6010A5          // VSADDLP V5.4S, V5.8H
+	WORD    $0x4E6028A5          // VSADDLP V5.4S, V5.8H (GNU as: saddlp v5.4s, v5.8h)
 
 	// ── s2 weighted: second half × weights [16..1] (.H8 → WORD) ──
 	WORD    $0x2E33C067          // VUMULL  V7.8H, V3.8B, V19.8B
 	WORD    $0x6E33C068          // VUMULL2 V8.8H, V3.16B, V19.16B
 	WORD    $0x4E68BCE7          // VADDP   V7.8H, V7.8H, V8.8H
-	WORD    $0x4E6010E7          // VSADDLP V7.4S, V7.8H
+	WORD    $0x4E6028E7          // VSADDLP V7.4S, V7.8H (GNU as: saddlp v7.4s, v7.8h)
 
 	// ── Merge + accumulate (32-bit, mnemonic) ──
 	VADD    V5.S4, V5.S4, V7.S4
