@@ -1,6 +1,8 @@
-// md5x8LoadTranspose — loads 64 bytes from 8 scattered block positions and
-// transposes directly into 16 transposed YMM words. Eliminates the intermediate
-// 512-byte copy (buf[8][64]byte) that the Go wrapper currently does.
+// md5x8LoadTransposeScalar — loads 64 bytes from 8 scattered block positions and
+// transposes directly into 16 transposed YMM words via VPINSRD scalar inserts
+// (~288 insns/chunk). Production uses md5x8LoadTransposeGather (AVX2, no buf)
+// or md5x8TransposeFast (from buf[8][64]byte); this scalar fallback is kept
+// primarily for test cross-validation.
 //
 // Args:
 //   data    — the full source byte slice

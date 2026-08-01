@@ -1,11 +1,13 @@
 // NEON checksum v10: VUADDLV s1 + WORD VUMULL s2, 64B unrolled (v5 architecture + fixes).
-// Fixes: (1) VADDP/VADD operand order (Go 1.26: VADDP Rm,Rn,Rd, VADD Rn,Rm,Rd).
+// Fixes: (1) VADDP/VADD operand order (Go asm unified rule: op1->Rm, op2->Rn, dst last).
 //        (2) Go dispatch p=n-n%64 (was 32). (3) Added raw parity test.
 // VUMULL uses byte-packed weights (correct for .8B operands).
 // 2+2 VUMULL interleave hides multiply latency on in-order cores.
 //
 // ⚠️  CBNZ mandatory. NEON clobbers NZCV flags.
-// ⚠️  Go 1.26 ARM64 SIMD: VADDP(Vm,Rn,Rd) Rd=pair(Rn,Rm), VADD(Rn,Rm,Rd) Rd=Rn+Rm.
+// ⚠️  Go asm unified rule (verified from machine code, go1.26.5): VADD/VADDP take
+//     `OP op1, op2, dst`: op1->ARM Rm (2nd src), op2->ARM Rn (1st src), dst last -> Rd.
+//     VADDP is asymmetric: Rd low half=pair(Rn=op2), high half=pair(Rm=op1). Wrong order = bug.
 
 #include "textflag.h"
 

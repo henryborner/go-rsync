@@ -9,7 +9,7 @@
 | Feature | Value |
 |---------|-------|
 | Architecture | ARM64 NEON (128-bit SIMD) |
-| Current version | **v0.4.0** — tiered UDOT / VUMULL dispatch |
+| Current version | **v0.4.3** — tiered UDOT / VUMULL dispatch |
 | UDOT path | 4 insns/64B, **27 GB/s** (requires dotprod) |
 | VUMULL path | 20 insns/64B, **12 GB/s** (all ARM64) |
 | Block size | 2×32B per iteration (64B unrolled) |
@@ -133,17 +133,19 @@ DATA w32_neon<>+24(SB)/8, $0x0102030405060708   // weights 8,7,...,1
 
 ## Key Discoveries
 
-### Go 1.26 ARM64 SIMD operand order (critical)
+### Go ARM64 SIMD operand order (verified from machine code, go1.26.5)
 
-Go ARM64 assembler uses destination-LAST but VADD and VADDP map first-two operands
-differently:
+VADD and VADDP use the SAME unified mapping (verified via `go tool asm` +
+objdump): Go syntax `OP op1, op2, dst` -> op1 encodes to ARM Rm (2nd source),
+op2 to ARM Rn (1st source), dst last -> Rd.
 
 | Instruction | Go syntax | Encoding |
 |-------------|-----------|----------|
-| VADD | `VADD Rn.T, Rm.T, Rd.T` | Rd = Rn + Rm |
-| VADDP | `VADDP Rm.T, Rn.T, Rd.T` | Rd = pair(Rn, Rm) |
+| VADD | `VADD op1.T, op2.T, dst.T` | Rd = Rn(op2) + Rm(op1) |
+| VADDP | `VADDP op1.T, op2.T, dst.T` | Rd low = pair(Rn=op2), high = pair(Rm=op1) |
 
-VADDP and VADD swap Rn/Rm mapping — never assume, always verify with objdump.
+VADDP is asymmetric (op2 -> low half, op1 -> high half), unlike commutative
+VADD. Never assume commutative order for VADDP — verify with objdump.
 
 ### VMLAL requires halfword weights (v7 bug)
 
@@ -161,8 +163,9 @@ result. v9+ added `TestNEONParityRaw` that validates against a pure-Go reference
 1. **Architecture-specific instructions matter** — UDOT (ARMv8.2 dotprod) is 2x faster than
    VUMULL. Intel's VPMADDUBSW is another 2x on top. ISA beats generic SIMD every time.
 
-2. **Go 1.26 ARM64 SIMD operand order is inconsistent** — VADD and VADDP differ.
-   Always verify with objdump or use WORD encodings.
+2. **Go ARM64 SIMD operand order is unified** — VADD and VADDP both map
+   op1->Rm, op2->Rn, dst last. But VADDP is asymmetric (op2->low half), so
+   verify with objdump rather than assuming commutative order.
 
 3. **Memory bandwidth is the limiting factor** — checksum is 2-3 ops per byte loaded.
    128B unrolling and other compute optimizations showed zero gain on CI VM.
@@ -186,7 +189,7 @@ result. v9+ added `TestNEONParityRaw` that validates against a pure-Go reference
 
 ## Future
 
-- Go 1.27 native mnemonics for VUMULL/UDOT/VMLAL (issue #78498)
+- Go 1.27 native mnemonics for VUMULL/VMLAL (issue #78498); UDOT has no issue yet
 - SVE/SVE2 on Graviton3+ / Neoverse V1+
 - Apple M-series AMX coprocessor
 

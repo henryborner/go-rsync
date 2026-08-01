@@ -1,10 +1,10 @@
 // NEON checksum: 32B/iter, raw sums (CHAR_OFFSET post-correction in Go).
 //
-// Go 1.25 ARM64 asm does not support VUADDLP, VUMULL, VUMULL2, VSADDLP, VMUL,
-// or any .H8 (16-bit) element arrangements. The loop body uses WORD encodings
-// for all 16-bit NEON instructions. 32-bit .S4 instructions use mnemonics.
+// Go 1.25 ARM64 asm lacks VUADDLP, VUMULL, VUMULL2, VSADDLP, VMUL mnemonics.
+// The loop body uses WORD encodings for those. .S4 instructions use mnemonics.
 //
-// Reference: Go issue #78498 (VUMULL fix landed April 2026, after Go 1.25).
+// Reference: Go issue #78498 (VUMULL/VUMULL2 landed April 2026 on master,
+// available in Go 1.27).
 
 #include "textflag.h"
 
@@ -53,13 +53,13 @@ loop:
 	VADD    V4.S4, V4.S4, V14.S4
 
 	// ── s2 weighted: first half × weights [32..17] (.H8 → WORD) ──
-	WORD    $0x6E32C045          // VUMULL  V5.8H, V2.8B, V18.8B
+	WORD    $0x2E32C045          // VUMULL  V5.8H, V2.8B, V18.8B
 	WORD    $0x6E32C046          // VUMULL2 V6.8H, V2.16B, V18.16B
 	WORD    $0x4E66BCA5          // VADDP   V5.8H, V5.8H, V6.8H
 	WORD    $0x4E6010A5          // VSADDLP V5.4S, V5.8H
 
 	// ── s2 weighted: second half × weights [16..1] (.H8 → WORD) ──
-	WORD    $0x6E33C067          // VUMULL  V7.8H, V3.8B, V19.8B
+	WORD    $0x2E33C067          // VUMULL  V7.8H, V3.8B, V19.8B
 	WORD    $0x6E33C068          // VUMULL2 V8.8H, V3.16B, V19.16B
 	WORD    $0x4E68BCE7          // VADDP   V7.8H, V7.8H, V8.8H
 	WORD    $0x4E6010E7          // VSADDLP V7.4S, V7.8H

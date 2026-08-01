@@ -115,12 +115,11 @@ go test -bench='BenchmarkSignature$|BenchmarkMD5x8_Bulk|BenchmarkChecksum1' -ben
 | `rolling_fast_amd64.go` | Tiered dispatch: AVX2 → SSE2 → Go, inlined `Checksum1` |
 | `rolling_generic.go` | Portable byte-by-byte checksum (non-amd64 fallback) |
 | `md5x8_amd64.s` | **Generated** — 64-step unrolled AVX2 MD5 core (8-way) |
-| `md5x8_transpose_fast_amd64.s` | Register-shuffle transpose (~80 vs ~320 VPINSRD instructions) |
-| `md5x8_transpose.s` | Contiguous 8×64→16 transposed YMMs (tail finalization) |
-| `md5x8_load_transpose_amd64.s` | VPINSRD scalar load+transpose (~288 insn/chunk, correct fallback) |
+| `md5x8_transpose_fast_amd64.s` | Register-shuffle transpose (~80 vs ~288 VPINSRD instructions) |
+| `md5x8_load_transpose_amd64.s` | VPINSRD scalar load+transpose (~288 insn/chunk, test cross-validation) |
 | `md5x8_amd64.go` | Go-side glue: `md5Hash8wayAVX2`, `md5Finalize8way` |
 | `md5x8_common.go` | Shared MD5 constants + `md5FinalLane` |
-| `md5x8_generic.go` | Stubs for non-amd64 (darwin/arm64) |
+| `md5x8_generic.go` | Stubs for non-amd64 (`!amd64`) |
 | `md5x8_purego.go` | Correct pure-Go 8-way MD5 reference (fallback / validation) |
 | `md5x8_gather_amd64.s` | VPGATHERDD gather load + transpose (8-way AVX2) |
 | `md5x16_amd64.s` | **Generated** — AVX-512 MD5 core (16-way, ≥2KB blocks) |

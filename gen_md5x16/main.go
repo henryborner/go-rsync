@@ -90,7 +90,7 @@ func main() {
 
 	// VPTERNLOGD immediate values for each round's F function.
 	// Computed as: ternary(d, b, c, imm8) where d=dst_initial, b=src1, c=src2
-	// Round 1: (b&c) | (~b&d) → imm8=0xB8 (copy d to work reg, then ternlog)
+	// Round 1: (b&c) | (~b&d) → imm8=0xD8 (copy d to work reg, then ternlog)
 	// Round 2: (b&d) | (c&~d) = c ^ ((b ^ c) & d). We'll use VPTERNLOGD directly.
 	// Round 3: b ^ c ^ d → use VPXOR x2
 	// Round 4: c ^ (b | ~d) → use VPTERNLOGD
