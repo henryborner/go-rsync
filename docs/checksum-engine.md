@@ -158,7 +158,7 @@ numbers may be inaccurate — that VM was cache-limited with unrecorded
 methodology — and are kept only to show the optimisation trend. See
 [benchmarks.md](benchmarks.md) for current numbers.)
 
-> **Rejected optimization**: VPSRLD for packed reduction (3→2 instructions). High 16 bits contain garbage, causing s1 amplification by 32768×. `Roll()` requires full 32-bit correctness.
+> **Rejected optimization**: VPSRLD for packed reduction (3→2 instructions). High 16 bits contain garbage, causing s1 amplification by 32768×. The vector reduction must stay full-32-bit correct: `Checksum1`/`Checksum1Components` expose full `s1`/`s2` (cross-machine parity compares them), even though `RollingSum.Roll` now truncates to 16 bits (see §5.2).
 
 ### 5.1 CHAR_OFFSET Post-Correction Overflow
 
@@ -193,6 +193,22 @@ identical, `s2` low 16 bits identical, and every full-`s2` difference
 comparison go-rsync never performs.
 
 Verified by `TestChecksum1Parity` in `delta_test.go`.
+
+### 5.2 RollingSum 16-Bit Truncation (2026-08-01)
+
+Since 2026-08-01, `RollingSum` keeps `s1`/`s2` truncated to their low 16
+bits (see `rolling.go`): `Reset` truncates the full values returned by
+`checksum1`, and `Roll` masks with `& 0xFFFF` each step — exactly like
+rsync's `checksum.c`. This is **bit-identical** to the former 32-bit state:
+all consumers (`Value`, `S1`, `S2`) only ever read the low 16 bits, and
+`(x mod 2³²) & 0xFFFF == x mod 2¹⁶`, so keeping 16-bit state is a
+homomorphism of the same arithmetic. It turns `Value` into a single OR
+(`s1 | (s2<<16)`), removing two ANDs from the search hot path.
+
+This does **not** relax the assembly paths: `checksum1AVX2`/`checksum1SSE2`
+still return full 32-bit values, because `Checksum1Components` and the
+cross-machine parity tests compare full `s1`/`s2` (see §5 and
+`TestChecksum1Parity`).
 
 ## 6. Assembly Notes
 

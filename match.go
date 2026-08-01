@@ -32,20 +32,8 @@ type Signature struct {
 }
 
 type hashEntry struct {
-	sum1   uint32
-	idx    int
-	offset int64
-	length int32
-}
-
-// computeTableSize returns hash table size with ~80% load factor.
-// Standard hash table sizing: count/8*10+11, minimum 65536.
-func computeTableSize(blockCount int) uint32 {
-	ts := uint32(blockCount/8)*10 + 11
-	if ts < 65536 {
-		ts = 65536
-	}
-	return ts
+	sum1 uint32 // full 32-bit weak checksum / 完整 32 位弱校验和
+	idx  int32  // block index + 1 (0 = empty slot) / 块索引 +1（0 表示空槽）
 }
 
 // CHUNK_SIZE is the maximum literal chunk size (32KB).
@@ -63,13 +51,29 @@ const CHUNK_SIZE = 32 * 1024
 // only slightly affecting compression ratio.
 const maxChainLen = 1024
 
+// maxProbeLen caps the open-addressing probe chain length at a single file
+// offset.  Unlike the old bucketed table (where an empty bucket ends the
+// scan immediately), a linear-probe miss walks every occupied slot until the
+// next empty one.  With ≤50% load a normal miss needs ~2 probes, but a
+// pathological signature where thousands of blocks share one hash value
+// would otherwise make one offset scan the whole cluster.  Probing beyond
+// this bound is treated as a miss — the data is sent literally, always
+// correct, only slightly affecting compression ratio (same contract as
+// maxChainLen).
+// 开放寻址探测链上限。旧链式表空桶立即结束，线性探测则要走到下一个空槽；
+// 正常负载（≤50%）miss 只需 ~2 次探测，但大量块共享同一哈希值的病态签名
+// 会让单个偏移扫过整个聚集区。超过此上限视为 miss——数据按字面量发送，
+// 始终正确，仅轻微影响压缩率（与 maxChainLen 同一契约）。
+const maxProbeLen = 32
+
 // MatchEngine is the delta match engine.
 // MatchEngine 增量匹配引擎。
 type MatchEngine struct {
 	blockSize  int32
 	strongHash func() hash.Hash // strong checksum factory / 强校验和工厂
 	checksums  []BlockSum       // checksums from the receiver / 目标端发来的校验和列表
-	hashTable  [][]hashEntry    // dynamic hash table / 动态大小哈希表
+	hashTable  []hashEntry      // flat open-addressing table / 扁平开放寻址哈希表
+	tableMask  uint32           // tableSize-1 (power of two) / 表大小掩码（2 的幂-1）
 	tableSize  uint32           // current table size / 当前表大小
 	cachedHash hash.Hash        // reused across Search to avoid per-hit allocation
 	cachedSum  []byte           // reused sum buffer to avoid Sum(nil) allocation
@@ -105,30 +109,46 @@ func (me *MatchEngine) LoadSignature(sig *Signature) {
 }
 
 func (me *MatchEngine) buildHashTable() {
-	// Dynamic table size: ~80% load factor.
-	// Odd size ensures modulo distributes across all buckets.
-	ts := computeTableSize(len(me.checksums))
-	me.tableSize = ts
-	me.hashTable = make([][]hashEntry, ts)
+	// Flat open addressing with linear probing.
+	// Capacity: next power of two ≥ 2×blockCount, minimum 65536.
+	//  - ≥2×blocks → ≤50% load keeps probe chains short.
+	//  - floor of 65536 keeps the hash 16-bit and the table sparse for small
+	//    files — sparse tables make the "empty slot" branch predictable in
+	//    the all-miss hot path (dense 12-bit tables cost ~0.6 mispredicts/byte).
+	// Power-of-two size lets us hash with (v+v>>16) & mask — no runtime division.
+	// 扁平开放寻址 + 线性探测。容量 = ≥2×块数 的下一个 2 的幂，下限 65536：
+	//  - 负载 ≤50% 保证探测链短；
+	//  - 下限 65536 保持 16 位哈希且小文件表稀疏——miss 热路径的"空槽"分支可预测。
+	cap := uint32(len(me.checksums)) * 2
+	if cap < 16 {
+		cap = 16
+	}
+	cap--
+	cap |= cap >> 1
+	cap |= cap >> 2
+	cap |= cap >> 4
+	cap |= cap >> 8
+	cap |= cap >> 16
+	cap++
+	if cap < 65536 {
+		cap = 65536
+	}
+	me.tableSize = cap
+	me.tableMask = cap - 1
+	me.hashTable = make([]hashEntry, cap)
 
 	for i, cs := range me.checksums {
-		var h uint32
-		if ts == 65536 {
-			// Traditional: (s1+s2) & 0xFFFF for 16-bit hash.
-			// Using the full Sum1 value (s1 + s2 packed) gives much better
-			// distribution than s1 alone.
-			h = (cs.Sum1 + cs.Sum1>>16) & 0xFFFF
-		} else {
-			// Large table: full 32-bit sum modulo odd table size.
-			// Odd divisor ensures high bits of Sum1 contribute to bucket index.
-			h = cs.Sum1 % ts
+		// (s1+s2) & mask mixes both 16-bit components; identical in both
+		// build and search.  Linear probe to the next empty slot.
+		h := (cs.Sum1 + cs.Sum1>>16) & me.tableMask
+		for {
+			if me.hashTable[h].idx == 0 { // empty slot / 空槽
+				me.hashTable[h].sum1 = cs.Sum1
+				me.hashTable[h].idx = int32(i) + 1
+				break
+			}
+			h = (h + 1) & me.tableMask
 		}
-		me.hashTable[h] = append(me.hashTable[h], hashEntry{
-			sum1:   cs.Sum1,
-			idx:    i,
-			offset: cs.Offset,
-			length: cs.Length,
-		})
 	}
 }
 
@@ -148,32 +168,34 @@ func (me *MatchEngine) Search(data []byte) []MatchResult {
 	for offset+int64(me.blockSize) <= int64(len(data)) {
 		matched := false
 
-		// Level 1: hash table lookup
-		var h uint32
+		// Level 1: hash table lookup — flat open addressing, linear probing.
+		// Probe chain replaces the old bucket list; empty slot ends the chain.
+		// 扁平开放寻址 + 线性探测；探测链取代旧桶列表，空槽即链尾。
 		v := rs.Value()
-		if me.tableSize == 65536 {
-			// Use exact same formula as buildHashTable
-			h = (v + v>>16) & 0xFFFF
-		} else {
-			h = v % me.tableSize
-		}
-		bucket := me.hashTable[h]
+		h := (v + v>>16) & me.tableMask
+		hit := false
+		probeLen := 0
+		var sum2Done bool
+		var computedSum2 []byte
+		chainLen := 0
 
-		if len(bucket) > 0 {
-			me.HashHits++
-
-			// Lazy strong sum: only compute MD5 when sum1 matches.
-			// For large files, 99%+ of hash hits fail at sum1 comparison.
-			// Computing MD5 before sum1 check wastes ~16TB of hashing on a 1GB file.
-			var sum2Done bool
-			var computedSum2 []byte
-			chainLen := 0
-
-			for _, entry := range bucket {
-				if entry.sum1 != rs.Value() {
-					continue
-				}
-
+		for {
+			// Bound the probe chain (see maxProbeLen) — a pathological cluster
+			// must not turn one offset into a full-table scan.
+			probeLen++
+			if probeLen > maxProbeLen {
+				break
+			}
+			e := &me.hashTable[h]
+			if e.idx == 0 { // empty slot → end of probe chain / 空槽=探测链结束
+				break
+			}
+			if !hit {
+				me.HashHits++
+				hit = true
+			}
+			idx := int(e.idx) - 1
+			if e.sum1 == v {
 				// Cap per-offset work to prevent O(N²) on pathological
 				// signatures (many blocks sharing the same weak checksum).
 				chainLen++
@@ -181,22 +203,25 @@ func (me *MatchEngine) Search(data []byte) []MatchResult {
 					break
 				}
 
-				// Only compute strong checksum when weak sum matches.
+				// Lazy strong sum: only compute MD5 when sum1 matches.
+				// For large files, 99%+ of hash hits fail at sum1 comparison.
+				// Computing MD5 before sum1 check wastes ~16TB of hashing on a 1GB file.
 				if !sum2Done {
 					blockData := data[offset : offset+int64(me.blockSize)]
 					computedSum2 = me.computeStrong(blockData)
 					sum2Done = true
 				}
 
-				if !bytes.Equal(computedSum2, me.checksums[entry.idx].Sum2) {
+				if !bytes.Equal(computedSum2, me.checksums[idx].Sum2) {
 					me.FalseAlarms++
+					h = (h + 1) & me.tableMask
 					continue
 				}
 
-				matchIdx := entry.idx
+				matchIdx := idx
 				if matchIdx != wantIdx && wantIdx < len(me.checksums) {
 					wantEntry := me.checksums[wantIdx]
-					if wantEntry.Sum1 == rs.Value() &&
+					if wantEntry.Sum1 == v &&
 						bytes.Equal(computedSum2, wantEntry.Sum2) {
 						matchIdx = wantIdx
 					}
@@ -220,6 +245,7 @@ func (me *MatchEngine) Search(data []byte) []MatchResult {
 				matched = true
 				break
 			}
+			h = (h + 1) & me.tableMask
 		}
 
 		if !matched {
@@ -377,27 +403,32 @@ func (me *MatchEngine) SearchReader(r io.Reader, fileSize int64, fn func(MatchRe
 		matched := false
 
 		// ── Hash table lookup (same logic as Search) ──
-		var h uint32
 		v := rs.Value()
-		if me.tableSize == 65536 {
-			h = (v + v>>16) & 0xFFFF
-		} else {
-			h = v % me.tableSize
-		}
-		bucket := me.hashTable[h]
+		h := (v + v>>16) & me.tableMask
+		hit := false
+		probeLen := 0
+		var sum2Done bool
+		var computedSum2 []byte
+		offIdx := int(offset - bufBase)
+		chainLen := 0
 
-		if len(bucket) > 0 {
-			me.HashHits++
-			var sum2Done bool
-			var computedSum2 []byte
-			offIdx := int(offset - bufBase)
-			chainLen := 0
-
-			for _, entry := range bucket {
-				if entry.sum1 != rs.Value() {
-					continue
-				}
-
+		for {
+			// Bound the probe chain (see maxProbeLen) — a pathological cluster
+			// must not turn one offset into a full-table scan.
+			probeLen++
+			if probeLen > maxProbeLen {
+				break
+			}
+			e := &me.hashTable[h]
+			if e.idx == 0 { // empty slot → end of probe chain / 空槽=探测链结束
+				break
+			}
+			if !hit {
+				me.HashHits++
+				hit = true
+			}
+			idx := int(e.idx) - 1
+			if e.sum1 == v {
 				chainLen++
 				if chainLen > maxChainLen {
 					break
@@ -409,15 +440,16 @@ func (me *MatchEngine) SearchReader(r io.Reader, fileSize int64, fn func(MatchRe
 					sum2Done = true
 				}
 
-				if !bytes.Equal(computedSum2, me.checksums[entry.idx].Sum2) {
+				if !bytes.Equal(computedSum2, me.checksums[idx].Sum2) {
 					me.FalseAlarms++
+					h = (h + 1) & me.tableMask
 					continue
 				}
 
-				matchIdx := entry.idx
+				matchIdx := idx
 				if matchIdx != wantIdx && wantIdx < len(me.checksums) {
 					wantEntry := me.checksums[wantIdx]
-					if wantEntry.Sum1 == rs.Value() &&
+					if wantEntry.Sum1 == v &&
 						bytes.Equal(computedSum2, wantEntry.Sum2) {
 						matchIdx = wantIdx
 					}
@@ -444,6 +476,7 @@ func (me *MatchEngine) SearchReader(r io.Reader, fileSize int64, fn func(MatchRe
 				needReset = true
 				break
 			}
+			h = (h + 1) & me.tableMask
 		}
 
 		if !matched {
@@ -794,6 +827,7 @@ func (me *MatchEngine) fork() *MatchEngine {
 		checksums:  me.checksums, // shared, read-only
 		hashTable:  me.hashTable, // shared, read-only
 		tableSize:  me.tableSize,
+		tableMask:  me.tableMask,
 		cachedHash: me.strongHash(), // fresh instance per worker
 	}
 }

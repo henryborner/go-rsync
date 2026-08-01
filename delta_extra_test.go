@@ -848,8 +848,8 @@ func TestPartialBasisLastBlockPartial(t *testing.T) {
 }
 
 // =========================================================================
-// Test 8: 大块数哈希表路径（>65536 块触发 v % tableSize）
-// 验证大表哈希路径与标准路径的一致性。
+// Test 8: 大块数哈希表路径（>65536 块触发大表路径）
+// 验证开放寻址大表路径与标准路径的一致性。
 // =========================================================================
 
 func TestLargeBlockCountHashTable(t *testing.T) {
@@ -857,9 +857,9 @@ func TestLargeBlockCountHashTable(t *testing.T) {
 		t.Skip("skipping large hash table test in short mode")
 	}
 
-	// Need > 52424 blocks to trigger tableSize > 65536.
-	// computeTableSize: (n/8)*10+11. For n=55000 → (6875)*10+11 = 68761 > 65536.
-	// Use small blockSize to keep file size reasonable.
+	// Flat open addressing: capacity = next power of two ≥ 2×blockCount.
+	// For n=55000 → 2n=110000 → next pow2 = 131072 (> 65536).
+	// 扁平开放寻址：容量 = ≥2×块数 的下一个 2 的幂。
 	const blockSize = int32(32)
 	const numBlocks = 55000
 	fileSize := int64(numBlocks) * int64(blockSize) // 1.76 MB
@@ -870,12 +870,19 @@ func TestLargeBlockCountHashTable(t *testing.T) {
 		oldFile[i] = byte((i*13 + 7) % 251)
 	}
 
-	// Verify tableSize > 65536.
-	ts := computeTableSize(numBlocks)
-	if ts <= 65536 {
-		t.Fatalf("tableSize=%d, expected > 65536 (need more blocks)", ts)
+	// Expected: next power of two ≥ 2*numBlocks.
+	wantTs := uint32(2 * numBlocks)
+	wantTs--
+	wantTs |= wantTs >> 1
+	wantTs |= wantTs >> 2
+	wantTs |= wantTs >> 4
+	wantTs |= wantTs >> 8
+	wantTs |= wantTs >> 16
+	wantTs++
+	if wantTs <= 65536 {
+		t.Fatalf("tableSize=%d, expected > 65536 (need more blocks)", wantTs)
 	}
-	t.Logf("tableSize=%d (large table path, v %% tableSize)", ts)
+	t.Logf("tableSize=%d (open-addressing large table path)", wantTs)
 
 	sig := GenerateSignature(oldFile, blockSize, "md5")
 	if len(sig.BlockSums) != numBlocks {
@@ -887,9 +894,9 @@ func TestLargeBlockCountHashTable(t *testing.T) {
 	eng.LoadSignature(sig)
 	results := eng.Search(oldFile)
 
-	// Verify the hash table is large.
-	if eng.tableSize != ts {
-		t.Errorf("engine.tableSize=%d, want %d", eng.tableSize, ts)
+	// Verify the hash table is large (power of two, ≥ 2×blocks).
+	if eng.tableSize != wantTs {
+		t.Errorf("engine.tableSize=%d, want %d", eng.tableSize, wantTs)
 	}
 
 	// Identical file should have zero literals.

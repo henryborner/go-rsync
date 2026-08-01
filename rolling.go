@@ -19,6 +19,13 @@ func NewRollingSum(data []byte) *RollingSum {
 func (rs *RollingSum) Reset(data []byte) {
 	rs.count = int32(len(data))
 	rs.s1, rs.s2 = checksum1(data)
+	// Only the low 16 bits of s1/s2 ever escape (Value/S1/S2).  Truncate here
+	// so Roll can stay 16-bit — equivalent to rsync's per-roll & 0xFFFF, and
+	// makes Value() a single OR.
+	// 只有 s1/s2 的低 16 位会对外（Value/S1/S2）。这里直接截断，让 Roll 全程
+	// 16 位运算——等价于 rsync 每轮 & 0xFFFF，并让 Value() 变为一条 OR。
+	rs.s1 &= 0xFFFF
+	rs.s2 &= 0xFFFF
 }
 
 // Roll advances the rolling window: removes one old byte, adds one new byte,
@@ -32,14 +39,16 @@ func (rs *RollingSum) Roll(oldByte, newByte byte, blockLen int32) {
 
 	// Pure uint32 arithmetic, overflow = natural modulo.
 	// 同 rsync checksum.c：纯 uint32 运算，溢出自然取模。
-	rs.s1 += new - old
-	rs.s2 += rs.s1 - uint32(blockLen)*old
+	// s1/s2 stay truncated to 16 bits: (x mod 2^32) & 0xFFFF == x mod 2^16,
+	// so keeping 16-bit state is bit-identical to the 32-bit version.
+	rs.s1 = (rs.s1 + new - old) & 0xFFFF
+	rs.s2 = (rs.s2 + rs.s1 - uint32(blockLen)*old) & 0xFFFF
 }
 
 func (rs *RollingSum) Value() uint32 {
-	// only take lower 16 bits on output, forming a 32-bit checksum.
-	// 仅输出时截取低 16 位，组成 32-bit 校验和。
-	return (rs.s1 & 0xFFFF) | ((rs.s2 & 0xFFFF) << 16)
+	// s1/s2 are kept 16-bit, so packing is a single OR (no masks needed).
+	// 组成 32-bit 校验和：s1/s2 已保持 16 位，只需一条 OR。
+	return rs.s1 | (rs.s2 << 16)
 }
 
 // S1 returns the lower 16 bits of s1.
