@@ -71,7 +71,7 @@ delta.ApplyDeltaStream(oldFile, conn, outputFile, blockSize, "md5")
 | ----------- | ------ | ------------ |
 | `GenerateSignature` (md5) | ~345 µs | **2.90 GB/s** |
 | `GenerateSignature` (xxh64) | ~152 µs | 6.57 GB/s |
-| `GenerateSignature` (xxh3) | ~231 µs | 4.33 GB/s |
+| `GenerateSignature` (xxh3) | ~113 µs | 8.8 GB/s |
 | `GenerateSignature` (sha256) | ~617 µs | 1.62 GB/s |
 | `GenerateSignatureParallel` (100MB, 32-thread) | ~2.63 ms | **39.9 GB/s** |
 
