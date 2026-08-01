@@ -92,6 +92,186 @@ cross-checked with `go test -bench`.
 | 256 KB | 81.5 | 81.5 |
 | 1 MB | 78.4 | 79.5 |
 
+### Reproducing this comparison
+
+The two tools are kept out of this repository: the rsync side links GPL code,
+and the go-rsync side is a standalone Go module. To reproduce, create the two
+files below and run them on the same machine (Linux or WSL2 recommended).
+
+**Prerequisites:** Go ≥ 1.26, g++, and an rsync 3.5.x source tree
+(`./configure --enable-roll-simd` must succeed so `config.h` exists).
+
+**1. go-rsync side** — `main.go` in a module `csumdiag` whose `go.mod` has
+`require github.com/henryborner/go-rsync v0.0.0` and
+`replace github.com/henryborner/go-rsync => ../go-rsync`:
+
+```go
+package main
+
+import (
+	"fmt"
+	"math/rand"
+	"os"
+	"sort"
+	"strconv"
+	"time"
+
+	delta "github.com/henryborner/go-rsync"
+)
+
+func fillData(data []byte, mode int) {
+	for i := range data {
+		switch mode {
+		case 0:
+			data[i] = byte((i*37)^(i>>3)) // formula
+		case 1:
+			data[i] = byte(rand.Intn(256)) // random
+		case 2:
+			data[i] = 0 // zeros
+		default:
+			data[i] = byte(i) // increasing
+		}
+	}
+}
+
+func main() {
+	mode := 0
+	if len(os.Args) > 1 {
+		mode, _ = strconv.Atoi(os.Args[1])
+	}
+	rand.Seed(12345)
+	sizes := []int{1024, 2048, 4096, 8192, 16384, 32768, 65536, 131072, 262144, 1048576}
+	for _, sz := range sizes {
+		data := make([]byte, sz)
+		fillData(data, mode)
+		gbps := make([]float64, 5)
+		for r := 0; r < 5; r++ {
+			delta.Checksum1(data) // warmup
+			// Time-boxed: run a fixed 500ms window so every size gets the same,
+			// sufficiently long measurement period (no iteration-count guessing).
+			target := 500 * time.Millisecond
+			start := time.Now()
+			count := 0
+			for {
+				for i := 0; i < 1000; i++ {
+					delta.Checksum1(data)
+					count++
+				}
+				if time.Since(start) >= target {
+					break
+				}
+			}
+			elapsed := time.Since(start)
+			gbps[r] = float64(sz) * float64(count) / elapsed.Seconds() / 1e9
+		}
+		sort.Float64s(gbps)
+		fmt.Printf("go-rsync %6d B: med %8.1f  min %7.1f  max %7.1f GB/s (mode %d)\n",
+			sz, gbps[2], gbps[0], gbps[4], mode)
+	}
+}
+```
+
+Build & run:
+
+```bash
+GOOS=linux GOARCH=amd64 go build -o csumdiag .
+./csumdiag 0   # deterministic data
+./csumdiag 1   # random data
+```
+
+**2. rsync side** — `bench.cpp` placed inside the rsync source tree. It
+deliberately does NOT `#include "rsync.h"` (that header defines a `new` macro
+which breaks every C++ standard-library header); types are declared manually:
+
+```cpp
+// rsync SIMD rolling checksum benchmark (get_checksum1)
+#include <cstdint>
+#include <chrono>
+#include <cstdio>
+#include <cstdlib>
+#include <algorithm>
+
+typedef uint32_t uint32;
+typedef int32_t int32;
+
+// Defined in simd-checksum-x86_64.cpp when USE_ROLL_SIMD is set (C linkage).
+extern "C" uint32 get_checksum1(char *buf1, int32 len);
+
+static void fill_data(char *data, int sz, int mode) {
+    for (int i = 0; i < sz; i++) {
+        switch (mode) {
+        case 0: data[i] = (char)((i * 37) ^ (i >> 3)); break; // formula
+        case 1: data[i] = (char)((rand() % 256) - 128); break; // random
+        case 2: data[i] = 0; break;                            // zeros
+        default: data[i] = (char)i; break;                     // increasing
+        }
+    }
+}
+
+int main(int argc, char **argv) {
+    int mode = argc > 1 ? atoi(argv[1]) : 0;
+    srand(12345);
+    int sizes[] = {1024, 2048, 4096, 8192, 16384, 32768, 65536, 131072, 262144, 1048576};
+    for (int k = 0; k < 10; k++) {
+        int sz = sizes[k];
+        char *data = (char *)malloc(sz);
+        fill_data(data, sz, mode);
+        double gbps[5];
+        for (int r = 0; r < 5; r++) {
+            volatile uint32 sink = 0;
+            sink += get_checksum1(data, sz); // warmup
+            // Time-boxed: fixed 500ms window per round (inner loop of 1000
+            // calls between clock checks keeps check overhead negligible).
+            auto start = std::chrono::steady_clock::now();
+            long long count = 0;
+            while (true) {
+                for (int i = 0; i < 1000; i++) {
+                    sink += get_checksum1(data, sz);
+                    count++;
+                }
+                if (std::chrono::steady_clock::now() - start >= std::chrono::milliseconds(500))
+                    break;
+            }
+            auto end = std::chrono::steady_clock::now();
+            double secs = std::chrono::duration<double>(end - start).count();
+            gbps[r] = (double)sz * count / secs / 1e9;
+        }
+        std::sort(gbps, gbps + 5);
+        printf("rsync  %7d B: med %8.1f  min %7.1f  max %7.1f GB/s (mode %d)\n",
+               sz, gbps[2], gbps[0], gbps[4], mode);
+        free(data);
+    }
+    return 0;
+}
+```
+
+Build & run (must use `USE_ROLL_ASM` so the hand-written AVX2 assembly is
+linked — the intrinsics-only build is not the rsync fast path on AMD):
+
+```bash
+cd <rsync-src>
+g++ -O2 -mavx2 -DHAVE_CONFIG_H -DUSE_ROLL_SIMD -DUSE_ROLL_ASM -I. \
+    bench.cpp simd-checksum-x86_64.cpp simd-checksum-avx2.S \
+    -o rsync_csum_bench_avx2
+./rsync_csum_bench_avx2 0   # deterministic data
+./rsync_csum_bench_avx2 1   # random data
+```
+
+**Methodology encoded in both tools:**
+
+- **Time-boxed 500 ms window** per round (inner loop of 1000 calls between
+  clock checks). Fixed iteration counts give small block sizes far too short
+  windows and noise-dominated results — observed in practice (1 KB varied
+  39–66 GB/s with a fixed iteration count, stable at ~65 GB/s with time-boxing).
+- **5 rounds per block size**, median reported; min/max shown to expose spread
+  (observed < 1.5%).
+- **Data modes**: 0 = deterministic `(i*37)^(i>>3)`, 1 = random (seed 12345),
+  2 = zeros, 3 = increasing. Run both modes; results were data-independent.
+- **Alternate execution order** between the two tools to cancel CPU frequency
+  drift; results were order-stable.
+- The go-rsync side was cross-checked with `go test -bench`
+  (`BenchmarkChecksum1`), giving consistent numbers.
+
 ## MD5 SIMD cores (zero-alloc)
 
 | Benchmark | Time | Throughput | B/op | allocs/op |
