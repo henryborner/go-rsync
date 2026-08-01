@@ -175,11 +175,18 @@ producing a different final `s2`.  The first divergence interval is
 grows (verified by scan up to 500 KB: `[113512, 131071]`, `[146543,
 160529]`, ...), so the divergence is not restricted to a single range.
 
-**This is not a bug.** Both `Checksum1` (signature generation) and
-`checksum1` (rolling match) use the **same** raw+correction path on any
-given machine, so they remain mutually consistent. The only scenario
-where the divergence matters is cross-ISA (e.g. AVX2-generated signatures
-matched on a pure-Go ARM machine), which go-rsync does not do.
+**This is not a bug, and it cannot affect matching across ISAs either.**
+Both `Checksum1` (signature generation) and `checksum1` (rolling match)
+use the **same** raw+correction path on any given machine, so they remain
+mutually consistent. The divergence does **not** propagate to the packed
+`Checksum1`: the difference is exactly `2³¹` — i.e. only the high 16 bits
+of `s2` — while `Checksum1` packs only the low 16 bits of each component
+(`(s1 & 0xFFFF) | ((s2 & 0xFFFF) << 16)`). Verified by scanning 69,752
+sizes (every divergence-interval boundary, zero and random data): `s1`
+identical, `s2` low 16 bits identical, and every full-`s2` difference
+`xor == 0x80000000`. The divergence is only observable via
+`Checksum1Components` (full `s1`/`s2`) compared across machines — a
+comparison go-rsync never performs.
 
 Verified by `TestChecksum1Parity` in `delta_test.go`.
 
