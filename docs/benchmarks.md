@@ -48,6 +48,50 @@
 | 64 KB | ~817 ns | 80.2 GB/s | 0 | 0 |
 | 1 MB | ~13.1 µs | 80.4 GB/s | 0 | 0 |
 
+## Rolling checksum vs rsync (AVX2, same machine, WSL2 Linux)
+
+Measured in WSL2 Ubuntu (native Linux) on the same AMD Ryzen 9 8940HX.
+Both sides run their own hand-written AVX2 rolling-checksum path:
+go-rsync `Checksum1` (64 B/iter, `rolling_amd64.s`) and rsync 3.5.0dev
+`get_checksum1` (`simd-checksum-x86_64.cpp` + `simd-checksum-avx2.S`,
+compiled with `-O2 -mavx2 -DUSE_ROLL_SIMD -DUSE_ROLL_ASM`).
+
+Method: time-boxed 500 ms window per round (inner loop of 1000 calls between
+clock checks), 5 rounds per block size, median reported (min/max spread
+< 1.5%). Two data patterns: deterministic formula `(i*37)^(i>>3)` and random
+(seeded). Execution order was alternated. The go-rsync side was additionally
+cross-checked with `go test -bench`.
+
+### Deterministic data
+
+| Block size | go-rsync GB/s | rsync AVX2 GB/s |
+|-----------|--------------|-----------------|
+| 1 KB | 65.3 | 51.0 |
+| 2 KB | 73.1 | 61.3 |
+| 4 KB | 77.7 | 70.4 |
+| 8 KB | 78.0 | 75.4 |
+| 16 KB | 80.8 | 79.9 |
+| 32 KB | 80.6 | 79.0 |
+| 64 KB | 78.6 | 79.2 |
+| 128 KB | 80.5 | 79.8 |
+| 256 KB | 81.7 | 79.8 |
+| 1 MB | 81.0 | 77.6 |
+
+### Random data
+
+| Block size | go-rsync GB/s | rsync AVX2 GB/s |
+|-----------|--------------|-----------------|
+| 1 KB | 64.4 | 52.1 |
+| 2 KB | 73.2 | 62.7 |
+| 4 KB | 77.2 | 71.5 |
+| 8 KB | 79.3 | 76.8 |
+| 16 KB | 80.2 | 79.5 |
+| 32 KB | 80.6 | 80.5 |
+| 64 KB | 80.5 | 80.9 |
+| 128 KB | 80.9 | 81.5 |
+| 256 KB | 81.5 | 81.5 |
+| 1 MB | 78.4 | 79.5 |
+
 ## MD5 SIMD cores (zero-alloc)
 
 | Benchmark | Time | Throughput | B/op | allocs/op |
