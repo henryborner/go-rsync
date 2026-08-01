@@ -149,6 +149,9 @@ Asm handles all bytes — full 64B blocks plus scalar remainder (0..63 bytes) in
 | v6 | CHAR_OFFSET + packing in asm, combined ones table | 19 | 37.4 GB/s | — |
 
 **Cumulative**: 28→19 instructions (−32%). Xeon 1KB throughput +38%.
+(The instruction counts are objective; the throughput columns are historical
+measurements from the legacy Xeon cloud VM and early Ryzen runs — see
+[benchmarks.md](benchmarks.md) for current numbers.)
 
 > **Rejected optimization**: VPSRLD for packed reduction (3→2 instructions). High 16 bits contain garbage, causing s1 amplification by 32768×. `Roll()` requires full 32-bit correctness.
 
@@ -312,18 +315,15 @@ End-to-end delta round-trip, identical files, example usage.
 
 ## 9. Performance Data
 
-**Intel Xeon Platinum cloud VM (2 vCPU, ~2.5 GHz):**
+> ⚠️  Current performance numbers live in **[benchmarks.md](benchmarks.md)**
+> (500 ms time-boxed methodology, current code). The legacy Xeon cloud-VM
+> tables that used to live here were removed: that 1-vCPU VM has a severely
+> reduced effective L3 (~512 KB), so numbers beyond cache size reflected memory
+> bandwidth, and the measurement methodology was not recorded. Historical
+> numbers in this doc (e.g. the v0-v6 optimisation table) are for trend only,
+> not current performance.
 
-| Block Size | go-rsync v6 | go-rsync v4 | Reference AVX2 |
-| ------------ | :-----------: | :-----------: | :--------------: |
-| 1 KB | 37.4 GB/s | 16.8 GB/s | 43.4 GB/s |
-| 8 KB | 42.8 GB/s | — | 48.3 GB/s |
-| 64 KB | 43.7 GB/s | 26.7 GB/s | 44.3 GB/s |
-| 1 MB | 43.6 GB/s | 42.4 GB/s | — |
-
-> Reference AVX2 = original rsync (C implementation compiled with SIMD checksum support), used as a baseline comparison.
-
-**AMD Ryzen 9 8940HX (Zen 4, laptop):**
+**AMD Ryzen 9 8940HX (Zen 4, laptop) — 500 ms time-boxed, median of 3 runs:**
 
 | Block Size | go-rsync | v1 (baseline) | Improvement |
 | ------------ | :-----------: | :-------------: | :-----------: |
@@ -353,23 +353,13 @@ VPADDW+VPMADDWD pattern as AVX2.
 
 ## B. Per-Size Benchmarks
 
-Same Xeon Platinum cloud VM, data pattern `i*7%251`, full tail-byte handling. Measurement error ±3%.
-
-| Size | go-rsync v6 | go-rsync v4 | Reference AVX2 |
-| ------ | :---: | :---: | :---: |
-| 1 KB | 37.4 GB/s | 16.8 GB/s | 43.4 GB/s |
-| 4 KB | — | 36.8 GB/s | 48.3 GB/s |
-| 16 KB | — | 39.2 GB/s | 49.0 GB/s |
-| 64 KB | 43.7 GB/s | 40.7 GB/s | 44.3 GB/s |
-| 97 KB | — | 41.1 GB/s | 44.8 GB/s |
-| 128 KB | — | 41.3 GB/s | 45.1 GB/s |
-| 256 KB | — | 41.5 GB/s | 45.2 GB/s |
-
-> Reference AVX2 = original rsync (C implementation compiled with SIMD checksum support).
+Removed — the per-size tables measured on the legacy Xeon cloud VM were
+unreliable (severely reduced effective L3, unrecorded methodology) and are
+superseded by [benchmarks.md](benchmarks.md).
 
 ---
 
-> Related: [MD5 SIMD Reference](md5-simd.md) | [ARM64 NEON Reference](neon-checksum.md) | [Project README](../README.md)
+> Related: [MD5 SIMD Reference](md5-simd.md) | [ARM64 NEON Reference](neon-checksum.md) | [Benchmarks](benchmarks.md) | [Project README](../README.md)
 
 ## C. ARM64 NEON Path
 
