@@ -103,7 +103,9 @@ done:
 
 - **Interleaved VPMADDUBSW**: s1 issued first, s2 follows — avoids 4 instructions contending for ports 0 and 5 simultaneously.
 - **Bottom-load with guard**: `SUBQ/JZ` prevents overread on the last iteration.
-- **PREFETCHT0**: ~3% gain on Xeon cloud VMs; zero cost on Zen 4.
+- **PREFETCHT0**: ~3% gain on Xeon cloud VMs; zero cost on Zen 4. (v3 in §5
+  also added the OOB guard, so its Ryzen 64KB dip cannot be blamed on the
+  PREFETCH alone — and both are early historical runs.)
 
 ## 4. Exit Reduction
 
@@ -151,7 +153,9 @@ Asm handles all bytes — full 64B blocks plus scalar remainder (0..63 bytes) in
 
 **Cumulative**: 28→19 instructions (−32%). Xeon 1KB throughput +38%.
 (The instruction counts are objective; the throughput columns are historical
-measurements from the legacy Xeon cloud VM and early Ryzen runs — see
+measurements from the legacy Xeon cloud VM and early Ryzen runs. The Xeon
+numbers may be inaccurate — that VM was cache-limited with unrecorded
+methodology — and are kept only to show the optimisation trend. See
 [benchmarks.md](benchmarks.md) for current numbers.)
 
 > **Rejected optimization**: VPSRLD for packed reduction (3→2 instructions). High 16 bits contain garbage, causing s1 amplification by 32768×. `Roll()` requires full 32-bit correctness.
@@ -242,7 +246,8 @@ VPGATHERDD Y2, (R8)(Y7*1), Y1    // mask first, VSIB middle, dst last
 (The 16-way AVX-512 form `VPGATHERDD (base)(zmm*1), K1, dst`
 puts the k-mask between the memory operand and the destination.)
 
-**VPGATHERDQ (AVX-512).** Native Go asm syntax:
+**VPGATHERDQ (AVX-512).** Native Go asm syntax (not used in this project —
+the MD5 gather code uses `VPGATHERDD` only; kept here for reference):
 `VPGATHERDQ (R8)(Yidx*4), K1, Z10`.  The index register is always YMM
 (8 × int32), the scale multiplies the dword index to get the byte offset.
 For 4-byte-aligned data (all standard rsync block sizes), use scale=4.
@@ -331,8 +336,9 @@ End-to-end delta round-trip, identical files, example usage.
 > tables that used to live here were removed: that 1-vCPU VM has a severely
 > reduced effective L3 (~512 KB), so numbers beyond cache size reflected memory
 > bandwidth, and the measurement methodology was not recorded. Historical
-> numbers in this doc (e.g. the v0-v6 optimisation table) are for trend only,
-> not current performance.
+> numbers in this doc are for trend only, not current performance — e.g. the
+> v0–v6 optimisation table keeps its legacy Xeon 1KB column for trend
+> comparison only.
 
 **AMD Ryzen 9 8940HX (Zen 4, laptop) — 500 ms time-boxed, median of 3 runs:**
 

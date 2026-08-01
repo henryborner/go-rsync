@@ -22,7 +22,7 @@ func MD5x8CoreForBench(x *[16][8]uint32, state *[4][8]uint32) {
 }
 
 // md5x8TransposeFast is a register-shuffle-based transpose from contiguous buffer.
-// Uses VPUNPCK instead of VPINSRD (~80 vs ~288 instructions).
+// Uses VPUNPCK instead of VPINSRD (~91 vs ~288 instructions).
 //
 //go:noescape
 func md5x8TransposeFast(buf *[8][64]byte, x *[16][8]uint32)

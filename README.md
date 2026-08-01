@@ -17,7 +17,7 @@ Built to power [Shuttle](https://github.com/henryborner/shuttle), my own Windows
 - **Pluggable strong hash** — md5, sha256, xxh64, xxh3-128 built-in. Register your own with `FastSum` support.
 - **Binary wire protocol** — compact big-endian encoding, ready for SSH pipes.
 - **Streaming I/O** — `GenerateSignatureReader`, `SearchReader`, stream decode — O(blockSize) memory for multi-GB files.
-- **Parallel APIs** — `GenerateSignatureParallel`, `SearchParallel` (5-7× on 8 cores).
+- **Parallel APIs** — `GenerateSignatureParallel`, `SearchParallel` (near-linear speedup on many cores).
 - **Rolling checksum** — CHAR_OFFSET=31, uint32 natural-overflow arithmetic.
 - **Well tested** — roundtrip, fuzz, parity (AVX2 vs SSE2 vs pure Go), MD5 8-way + 16-way (AVX2 + AVX-512 vs stdlib).
 
@@ -131,12 +131,12 @@ go test -bench='BenchmarkSignature$|BenchmarkSignatureXXH64$|BenchmarkSignatureX
 | `rolling_neon_dotprod_arm64.s` | UDOT checksum assembly (ARMv8.2+dotprod, 4 insns/64B) |
 | `rolling_neon_arm64.s` | VUMULL NEON checksum assembly (ARM64 fallback) |
 | `md5x8_amd64.s` | **Generated** — 64-step unrolled AVX2 MD5 core (8-way) |
-| `md5x8_transpose_fast_amd64.s` | Register-shuffle transpose (~80 vs ~288 VPINSRD instructions) |
+| `md5x8_transpose_fast_amd64.s` | Register-shuffle transpose (~91 vs ~288 VPINSRD instructions) |
 | `md5x8_load_transpose_amd64.s` | VPINSRD scalar load+transpose (~288 insn/chunk, test cross-validation) |
 | `md5x8_amd64.go` | Go-side glue: `md5Hash8wayAVX2`, `md5Finalize8way` |
 | `md5x8_common.go` | Shared MD5 constants + `md5FinalLane` |
 | `md5x8_generic.go` | Stubs for non-amd64 (`!amd64`) |
-| `md5x8_purego.go` | Correct pure-Go 8-way MD5 reference (fallback / validation) |
+| `md5x8_purego.go` | Correct pure-Go 8-way MD5 reference (test/validation only) |
 | `md5x8_gather_amd64.s` | VPGATHERDD gather load + transpose (8-way AVX2) |
 | `md5x16_amd64.s` | **Generated** — AVX-512 MD5 core (16-way, ≥2KB blocks) |
 | `md5x16_amd64.go` | Go-side glue for AVX-512 path |
@@ -151,7 +151,7 @@ go test -bench='BenchmarkSignature$|BenchmarkSignatureXXH64$|BenchmarkSignatureX
 | `gen_md5x4/main.go` | Code generator for `md5x4_arm64.s` |
 | `registry_stdlib.go` | Built-in hash constructors + `FastSum` implementations |
 | `md5x8_test.go` | Tests: 8-way + 16-way MD5 parity, gather verification |
-| `md5x8_rand_test.go` | Randomized MD5 parity (100 random-length blocks) |
+| `md5x8_rand_test.go` | Randomized MD5 parity (100 iterations × 2–8 random-length blocks) |
 | `delta_test.go` | Core roundtrip, identical-file, reconstruction tests |
 | `fuzz_test.go` | Fuzz tests: roundtrip, wire encode/decode, checksum parity |
 | `gen_md5x8/main.go` | Code generator for `md5x8_amd64.s` |
