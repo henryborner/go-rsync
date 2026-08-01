@@ -395,6 +395,16 @@ func BenchmarkSignatureXXH64(b *testing.B) {
 	}
 }
 
+func BenchmarkSignatureXXH3(b *testing.B) {
+	data := make([]byte, 1024*1024)
+	rand.Read(data)
+	blockSize := CalculateBlockSize(int64(len(data)))
+	b.ResetTimer()
+	for b.Loop() {
+		GenerateSignature(data, blockSize, "xxh3")
+	}
+}
+
 // BenchmarkSignatureReader measures the streaming reader path (used by shuttle).
 // Tests md5 with AVX2 across typical shuttle block sizes.
 func BenchmarkSignatureReader(b *testing.B) {

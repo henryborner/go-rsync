@@ -114,6 +114,9 @@ go test -bench='BenchmarkSignature$|BenchmarkMD5x8_Bulk|BenchmarkChecksum1' -ben
 | `rolling_sse2_amd64.s` | SSE2/SSSE3 checksum assembly (32B/iter) |
 | `rolling_fast_amd64.go` | Tiered dispatch: AVX2 → SSE2 → Go, inlined `Checksum1` |
 | `rolling_generic.go` | Portable byte-by-byte checksum (non-amd64 fallback) |
+| `rolling_fast_arm64.go` | ARM64 NEON tiered dispatch: UDOT (dotprod) → VUMULL → Go |
+| `rolling_neon_dotprod_arm64.s` | UDOT checksum assembly (ARMv8.2+dotprod, 4 insns/64B) |
+| `rolling_neon_arm64.s` | VUMULL NEON checksum assembly (ARM64 fallback) |
 | `md5x8_amd64.s` | **Generated** — 64-step unrolled AVX2 MD5 core (8-way) |
 | `md5x8_transpose_fast_amd64.s` | Register-shuffle transpose (~80 vs ~288 VPINSRD instructions) |
 | `md5x8_load_transpose_amd64.s` | VPINSRD scalar load+transpose (~288 insn/chunk, test cross-validation) |
@@ -128,6 +131,11 @@ go test -bench='BenchmarkSignature$|BenchmarkMD5x8_Bulk|BenchmarkChecksum1' -ben
 | `sha256x8_amd64.s` | **Generated** — AVX2 SHA-256 core (8-way) |
 | `sha256x8_amd64.go` | Go-side glue for SHA-256 8-way |
 | `sha256x8_common.go` | Shared SHA-256 constants |
+| `md5x4_arm64.s` | **Generated** — 4-way NEON MD5 core (64 unrolled steps) |
+| `md5x4_arm64.go` | Go-side glue for 4-way NEON MD5 |
+| `md5x4_generic.go` | Stubs for non-arm64 |
+| `md5x4_ref.go` | Pure-Go 4-way MD5 reference (validation) |
+| `gen_md5x4/main.go` | Code generator for `md5x4_arm64.s` |
 | `registry_stdlib.go` | Built-in hash constructors + `FastSum` implementations |
 | `md5x8_test.go` | Tests: 8-way + 16-way MD5 parity, gather verification |
 | `md5x8_rand_test.go` | Randomized MD5 parity (100 random-length blocks) |
@@ -138,11 +146,13 @@ go test -bench='BenchmarkSignature$|BenchmarkMD5x8_Bulk|BenchmarkChecksum1' -ben
 | `gen_sha256x8/main.go` | Code generator for `sha256x8_amd64.s` |
 | `docs/checksum-engine.md` | Checksum engine: algorithm, loop structure, conventions, optimization history, SSE2 appendix |
 | `docs/md5-simd.md` | MD5 SIMD reference: architecture, techniques, safety checklist |
+| `docs/neon-checksum.md` | ARM64 NEON rolling checksum: UDOT/VUMULL tiers, WORD encodings, performance |
 
 ## 📚 Documentation
 
 - **[Checksum Engine](docs/checksum-engine.md)** — Rolling checksum algorithm, AVX2/SSE2 loop structure, Go Plan 9 conventions, optimization history (v0→v6), register map, test coverage, performance data.
 - **[MD5 SIMD](docs/md5-simd.md)** — AVX2/AVX-512 parallel MD5 architecture, gather/transpose techniques, assembly notes, safety checklist.
+- **[NEON Checksum](docs/neon-checksum.md)** — ARM64 NEON rolling checksum: UDOT/VUMULL dispatch, WORD encodings, QEMU/CI verification.
 
 ## 🔗 Related
 

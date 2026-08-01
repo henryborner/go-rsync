@@ -327,15 +327,15 @@ End-to-end delta round-trip, identical files, example usage.
 
 | Block Size | go-rsync | v1 (baseline) | Improvement |
 | ------------ | :-----------: | :-------------: | :-----------: |
-| 1 KB | 61.0 GB/s | 44.8 GB/s | +36% |
-| 64 KB | 75.6 GB/s | 51.5 GB/s | +47% |
-| 1 MB | 75.2 GB/s | 51.2 GB/s | +47% |
+| 1 KB | 63.0 GB/s | 44.8 GB/s | +41% |
+| 64 KB | 77.0 GB/s | 51.5 GB/s | +50% |
+| 1 MB | 77.0 GB/s | 51.2 GB/s | +50% |
 
 **Three-tier comparison (Ryzen 9, 64KB):**
 
 | Tier | Throughput | vs AVX2 |
 | ------ | :----------: | :-------: |
-| AVX2 (64B/iter) | 75.6 GB/s | — |
+| AVX2 (64B/iter) | 77.0 GB/s | — |
 | SSE2 (32B/iter) | 38.6 GB/s | 2.0× slower |
 | Pure Go (128B batch) | 1.9 GB/s | 40× slower |
 
