@@ -9,7 +9,7 @@
 | | |
 |---|---|
 | CPU | AMD Ryzen 9 8940HX (Zen 4, 16 cores / 32 threads) |
-| L3 cache | 40 MB (full) |
+| L3 cache | 64 MB (full) |
 | OS / Go | Windows 11 / go1.26.5 |
 
 ## GenerateSignature (1 MB data, single-threaded)
