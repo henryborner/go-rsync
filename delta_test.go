@@ -478,9 +478,11 @@ func BenchmarkSearchMiss(b *testing.B) {
 }
 
 // BenchmarkSearchMatrix sweeps file size (block size) and match density:
-//   miss:      unrelated newFile → no matches (slowest per byte)
-//   match90:   10% of bytes modified (typical changed file)
-//   identical: byte-for-byte copy → every block matches (fastest)
+//
+//	miss:      unrelated newFile → no matches (slowest per byte)
+//	match90:   10% of bytes modified (typical changed file)
+//	identical: byte-for-byte copy → every block matches (fastest)
+//
 // 1MB → blockSize 700 (AVX2 MD5); 32MB → blockSize ~2KB (AVX-512 MD5 path
 // in signature generation). Hash tables stay L2-resident at these sizes.
 func BenchmarkSearchMatrix(b *testing.B) {

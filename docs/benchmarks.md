@@ -44,6 +44,62 @@ block size; the 44.3 GB/s comes from 32-way parallelism, not AVX-512.
 
 md5 dispatch: blockSize ≥ 2 KB → AVX-512 16-way, otherwise AVX2 8-way.
 
+## Search / delta matching (md5)
+
+### Search (1 MB, blockSize=700)
+
+| Benchmark | Data | Time | B/op | allocs/op |
+|-----------|------|------|------|-----------|
+| `Search` (90% match) | 1 MB, every 10th byte flipped | ~3.2 ms | — | — |
+| `SearchMiss` (all-miss) | 1 MB, unrelated data | ~3.1 ms | — | — |
+| `SearchReader` (streaming) | 1 MB | ~3.8 ms | 655,680 | 7 |
+
+### SearchMatrix (size × match density)
+
+| Data | miss | match90 | identical |
+|------|------|---------|-----------|
+| 1 MB (blockSize 700) | 330 MB/s | 330 MB/s | 903 MB/s |
+| 32 MB (blockSize ~2 KB) | 210 MB/s | 210 MB/s | 1066 MB/s |
+
+- miss ≈ match90: flipping 10% of bytes breaks ~20% of blocks, so the damaged
+  regions dominate and are scanned byte-by-byte in both cases.
+- identical jumps by blockSize on every match (~0.9–1.1 GB/s).
+- Large files drop to ~210 MB/s (data + table leave L2; TLB pressure).
+
+### SearchParallel (1 MB, md5)
+
+| Workers | Time |
+|---------|------|
+| 1 | 3.1 ms |
+| 2 | 1.8 ms |
+| 4 | 1.2 ms |
+| 8 | 1.0 ms |
+
+## Delta pipeline (reconstruct / roundtrip)
+
+| Benchmark | Time (1 MB) | Throughput |
+|-----------|-------------|-----------|
+| `ApplyDelta` Match90 (~90% block refs) | ~371 µs | ~2.8 GB/s |
+| `ApplyDelta` AllLiteral (all literals) | ~355 µs | ~3.0 GB/s |
+| `RoundTrip` (Delta + ApplyDelta + verify) | ~4.19 ms | ~250 MB/s (search-dominated) |
+
+## RollingSum hot path (Roll + Value)
+
+| Benchmark | ns/op |
+|-----------|-------|
+| `RollValue`/RollOnly | ~1.84 ns |
+| `RollValue`/RollAndValue | ~2.07 ns |
+
+~10 cycles/byte — the serial dependency floor of the search hot path; the
+hash-table lookup latency (L2/L3) dominates the remaining cost per byte.
+
+## Wire format
+
+| Stream | Encode | Decode |
+|--------|--------|--------|
+| Signature (1 MB, ~1500 blocks) | ~1.03 GB/s | ~656 MB/s |
+| Instructions (typical 10%-modified delta) | ~5.5 GB/s | ~8.2 GB/s |
+
 ## Checksum1 (rolling weak checksum — zero-alloc)
 
 | Size | Time | Throughput | B/op | allocs/op |
