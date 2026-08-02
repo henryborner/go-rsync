@@ -32,7 +32,7 @@ type Signature struct {
 }
 
 type hashEntry struct {
-	sum1 uint32 // full 32-bit weak checksum / 完整 32 位弱校验和
+	sum1 uint32 // packed weak checksum (s1 | s2<<16), each 16-bit / 打包弱校验和（s1|s2<<16，各 16 位）
 	idx  int32  // block index + 1 (0 = empty slot) / 块索引 +1（0 表示空槽）
 }
 

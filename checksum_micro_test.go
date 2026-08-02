@@ -8,10 +8,9 @@ import (
 	"testing"
 )
 
-// BenchmarkChecksumMicro isolates three layers:
-//   Raw:   checksum1AVX2 asm only (raw byte sums, no CHAR_OFFSET, no packing)
-//   +C:    asm + CHAR_OFFSET correction (what private checksum1 does)
-//   Full:  asm + CHAR_OFFSET + uint32 packing (what public Checksum1 does)
+// BenchmarkChecksumMicro isolates two layers:
+//   Raw:   checksum1AVX2 asm only (raw byte sums truncated to 16 bits, no CHAR_OFFSET)
+//   Full:  public Checksum1 (asm 16-bit lanes + CHAR_OFFSET + packing)
 //
 // Run on server:
 //   ./bench_linux -test.bench='Micro' -test.benchtime=1s -test.count=3

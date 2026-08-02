@@ -20,7 +20,8 @@ func Checksum1(data []byte) uint32 {
 	return (s1 & 0xFFFF) | ((s2 & 0xFFFF) << 16)
 }
 
-// Checksum1Components returns the raw (s1, s2) components.
+// Checksum1Components returns the raw (s1, s2) components. Unlike amd64
+// (16-bit-truncated since v7), the generic path returns full 32-bit values.
 func Checksum1Components(data []byte) (s1, s2 uint32) {
 	return checksum1(data)
 }

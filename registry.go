@@ -50,9 +50,9 @@
 // # Performance (amd64, Ryzen 9 8940HX)
 //
 //	checksum1 throughput:
-//	  AVX2      ~77 GB/s
-//	  SSE2      ~39 GB/s
-//	  pure Go    ~1.9 GB/s
+//	  AVX2      ~111 GB/s
+//	  SSE2      ~57 GB/s
+//	  pure Go    ~2.1 GB/s
 //
 // See the project README for full benchmark tables.
 //

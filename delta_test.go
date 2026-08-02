@@ -903,10 +903,11 @@ func BenchmarkSearchParallel(b *testing.B) {
 // all block sizes, including the [65536, 92681] range where the
 // CHAR_OFFSET post-correction's uint32 intermediate multiplication wraps.
 //
-// Both paths use 32-bit overflow intentionally (matching rsync's uint32
-// arithmetic), but they reach the same result via different routes:
-//   - Checksum1 → checksum1PackedAVX2 (asm, built-in CHAR_OFFSET)
-//   - checksum1 → checksum1AVX2 (asm, raw sums) + Go post-correction
+// Since v7 the packed path runs entirely in 16-bit lanes (mod 2^16); the
+// checksum1 path uses 16-bit asm raw sums + a 32-bit Go post-correction.
+// Both pack to the same 16-bit components via different routes:
+//   - Checksum1 → checksum1PackedAVX2 (asm, 16-bit lanes, built-in CHAR_OFFSET)
+//   - checksum1 → checksum1AVX2 (asm, 16-bit raw) + Go post-correction
 //
 // If these ever diverge, signature generation and rolling match would
 // compute different weak checksums for the same block, causing match
