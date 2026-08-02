@@ -477,6 +477,46 @@ func BenchmarkSearchMiss(b *testing.B) {
 	}
 }
 
+// BenchmarkSearchMatrix sweeps file size (block size) and match density:
+//   miss:      unrelated newFile → no matches (slowest per byte)
+//   match90:   10% of bytes modified (typical changed file)
+//   identical: byte-for-byte copy → every block matches (fastest)
+// 1MB → blockSize 700 (AVX2 MD5); 32MB → blockSize ~2KB (AVX-512 MD5 path
+// in signature generation). Hash tables stay L2-resident at these sizes.
+func BenchmarkSearchMatrix(b *testing.B) {
+	sizes := []int{1 << 20, 32 << 20}
+	for _, size := range sizes {
+		basis := make([]byte, size)
+		rand.Read(basis)
+		miss := make([]byte, size)
+		rand.Read(miss)
+		match90 := make([]byte, size)
+		copy(match90, basis)
+		for i := 0; i < len(match90)/10; i++ {
+			match90[i*10] ^= 0xFF
+		}
+		identical := make([]byte, size)
+		copy(identical, basis)
+
+		blockSize := CalculateBlockSize(int64(size))
+		sig := GenerateSignature(basis, blockSize, "md5")
+
+		label := fmt.Sprintf("%dMB", size>>20)
+		files := map[string][]byte{"miss": miss, "match90": match90, "identical": identical}
+		for _, name := range []string{"miss", "match90", "identical"} {
+			nf := files[name]
+			b.Run(label+"/"+name, func(b *testing.B) {
+				b.SetBytes(int64(size))
+				for b.Loop() {
+					engine, _ := NewMatchEngine(blockSize, "md5")
+					engine.LoadSignature(sig)
+					engine.Search(nf)
+				}
+			})
+		}
+	}
+}
+
 // BenchmarkRollValue measures the rolling-sum hot-path arithmetic in
 // isolation. Roll + Value form a serial dependency chain (each Roll depends
 // on the previous state) — this is what the search loop pays per byte before
