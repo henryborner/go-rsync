@@ -477,6 +477,36 @@ func BenchmarkSearchMiss(b *testing.B) {
 	}
 }
 
+// BenchmarkRollValue measures the rolling-sum hot-path arithmetic in
+// isolation. Roll + Value form a serial dependency chain (each Roll depends
+// on the previous state) — this is what the search loop pays per byte before
+// the hash-table lookup. Constant bytes isolate arithmetic from memory;
+// blockSize is fixed at 700 (the CalculateBlockSize default for 1MB files).
+// Useful as a baseline for any future Roll optimization.
+func BenchmarkRollValue(b *testing.B) {
+	blockSize := int32(700)
+	data := make([]byte, blockSize+1)
+	rand.Read(data)
+	rs := NewRollingSum(data[:blockSize])
+
+	b.Run("RollOnly", func(b *testing.B) {
+		var sink uint32
+		for b.Loop() {
+			rs.Roll(data[0], data[blockSize], blockSize)
+			sink += rs.s1
+		}
+		_ = sink
+	})
+	b.Run("RollAndValue", func(b *testing.B) {
+		var sink uint32
+		for b.Loop() {
+			rs.Roll(data[0], data[blockSize], blockSize)
+			sink += rs.Value()
+		}
+		_ = sink
+	})
+}
+
 func BenchmarkChecksum1(b *testing.B) {
 	sizes := []int{1024, 8192, 65536, 1048576}
 	for _, size := range sizes {
