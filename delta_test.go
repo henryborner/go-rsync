@@ -454,6 +454,29 @@ func BenchmarkSearch(b *testing.B) {
 	}
 }
 
+// BenchmarkSearchMiss measures the worst-case search path: newFile is
+// unrelated to basis, so no matches are found and every byte pays a rolling
+// update + hash + random hash-table probe. Unlike BenchmarkSearch's 90%-match
+// case (matched blocks jump by blockSize), every byte here is scanned.
+// At 1MB the hash table (min 65536 entries = 512KB) is L2-resident on Zen 4
+// (~318 MB/s); the L3-resident worst case for large files is ~100-130 MB/s.
+func BenchmarkSearchMiss(b *testing.B) {
+	basis := make([]byte, 1<<20)
+	rand.Read(basis)
+	newFile := make([]byte, 1<<20)
+	rand.Read(newFile) // unrelated → all miss
+
+	blockSize := CalculateBlockSize(int64(len(basis)))
+	sig := GenerateSignature(basis, blockSize, "md5")
+
+	b.ResetTimer()
+	for b.Loop() {
+		engine, _ := NewMatchEngine(blockSize, "md5")
+		engine.LoadSignature(sig)
+		engine.Search(newFile)
+	}
+}
+
 func BenchmarkChecksum1(b *testing.B) {
 	sizes := []int{1024, 8192, 65536, 1048576}
 	for _, size := range sizes {
