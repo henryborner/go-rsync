@@ -128,33 +128,37 @@ cross-checked with `go test -bench`.
 
 ### Deterministic data
 
+> Both columns re-measured 2026-08-02 in the same WSL session (alternating
+> execution order, 500 ms time-box, 5 rounds, median). go-rsync is on the
+> current v7 (16-bit-lane) code; rsync is the rebuilt SIMD tool.
+
 | Block size | go-rsync GB/s | rsync AVX2 GB/s |
 |-----------|--------------|-----------------|
-| 1 KB | 65.3 | 51.0 |
-| 2 KB | 73.1 | 61.3 |
-| 4 KB | 77.7 | 70.4 |
-| 8 KB | 78.0 | 75.4 |
-| 16 KB | 80.8 | 79.9 |
-| 32 KB | 80.6 | 79.0 |
-| 64 KB | 78.6 | 79.2 |
-| 128 KB | 80.5 | 79.8 |
-| 256 KB | 81.7 | 79.8 |
-| 1 MB | 81.0 | 77.6 |
+| 1 KB | 78.4 | 53.2 |
+| 2 KB | 92.4 | 63.4 |
+| 4 KB | 104.4 | 72.4 |
+| 8 KB | 109.4 | 77.8 |
+| 16 KB | 111.8 | 80.6 |
+| 32 KB | 112.0 | 81.5 |
+| 64 KB | 111.7 | 82.0 |
+| 128 KB | 112.5 | 82.6 |
+| 256 KB | 113.6 | 82.6 |
+| 1 MB | 106.6 | 80.7 |
 
 ### Random data
 
 | Block size | go-rsync GB/s | rsync AVX2 GB/s |
 |-----------|--------------|-----------------|
-| 1 KB | 64.4 | 52.1 |
-| 2 KB | 73.2 | 62.7 |
-| 4 KB | 77.2 | 71.5 |
-| 8 KB | 79.3 | 76.8 |
-| 16 KB | 80.2 | 79.5 |
-| 32 KB | 80.6 | 80.5 |
-| 64 KB | 80.5 | 80.9 |
-| 128 KB | 80.9 | 81.5 |
-| 256 KB | 81.5 | 81.5 |
-| 1 MB | 78.4 | 79.5 |
+| 1 KB | 79.4 | 52.7 |
+| 2 KB | 94.1 | 63.5 |
+| 4 KB | 103.5 | 72.2 |
+| 8 KB | 106.2 | 77.7 |
+| 16 KB | 109.0 | 80.4 |
+| 32 KB | 107.8 | 81.5 |
+| 64 KB | 110.5 | 82.1 |
+| 128 KB | 112.4 | 82.6 |
+| 256 KB | 113.4 | 82.6 |
+| 1 MB | 104.6 | 80.6 |
 
 ### Reproducing this comparison
 
