@@ -99,9 +99,9 @@ Windows 11, Go 1.26.5 — the same machine used for the full tables in
 
 | Data size | Throughput |
 | ----------- | :---: |
-| 1 KB | **64 GB/s** |
-| 64 KB | **80 GB/s** |
-| 1 MB | **80 GB/s** |
+| 1 KB | **81 GB/s** |
+| 64 KB | **111 GB/s** |
+| 1 MB | **108 GB/s** |
 
 > Per-size curves, allocation counts (B/op, allocs/op), the streaming
 > `SignatureReader` results, and the rsync AVX2 comparison (deterministic +

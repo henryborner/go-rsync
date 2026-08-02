@@ -31,10 +31,11 @@ func TestAVX2Parity(t *testing.T) {
 			if !checksum1AVX2(tt.data, &avxS1, &avxS2) {
 				t.Fatal("AVX2 refused")
 			}
-			// asm now processes ALL bytes (64B blocks + scalar remainder).
-			if avxS1 != wantS1 || avxS2 != wantS2 {
+			// asm now processes ALL bytes (64B blocks + scalar remainder) and
+			// returns raw sums truncated to 16 bits (16-bit-lane design).
+			if avxS1 != (wantS1 & 0xFFFF) || avxS2 != (wantS2 & 0xFFFF) {
 				t.Errorf("%s: len=%d s1 want=%d got=%d, s2 want=%d got=%d",
-					tt.name, len(tt.data), wantS1, avxS1, wantS2, avxS2)
+					tt.name, len(tt.data), wantS1&0xFFFF, avxS1, wantS2&0xFFFF, avxS2)
 			}
 		})
 	}
@@ -68,9 +69,11 @@ func TestSSE2Parity(t *testing.T) {
 				sseS1 += uint32(tt.data[i])
 				sseS2 += sseS1
 			}
-			if sseS1 != wantS1 || sseS2 != wantS2 {
+			// asm returns raw sums truncated to 16 bits (16-bit-lane design);
+			// the Go tail loop above runs in full uint32, so mask both sides.
+			if (sseS1 & 0xFFFF) != (wantS1 & 0xFFFF) || (sseS2 & 0xFFFF) != (wantS2 & 0xFFFF) {
 				t.Errorf("%s: len=%d s1 want=%d got=%d, s2 want=%d got=%d",
-					tt.name, len(tt.data), wantS1, sseS1, wantS2, sseS2)
+					tt.name, len(tt.data), wantS1&0xFFFF, sseS1&0xFFFF, wantS2&0xFFFF, sseS2&0xFFFF)
 			}
 		})
 	}

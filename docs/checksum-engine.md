@@ -1,6 +1,6 @@
 # go-rsync Checksum Engine
 
-> The rolling checksum follows the well-known formula (CHAR_OFFSET, uint32 natural-overflow arithmetic). The VPMADDWD pair-sum reduction, deferred-accumulation structure, and Go Plan 9 assembly implementations are original work.
+> The rolling checksum follows the well-known formula (CHAR_OFFSET, uint32 natural-overflow arithmetic). The 16-bit-lane AVX2/SSE2 design (VPADDW wrap = mod 2^16 truncation, no VPMADDWD) and Go Plan 9 assembly implementations are original work.
 
 ## Contents
 
@@ -24,12 +24,12 @@
 | Data type | `uint8` (0..255) |
 | CHAR_OFFSET | 31 (`Checksum1` in asm; `checksum1` in Go layer) |
 | Return format | `Checksum1` → packed `uint32`; `checksum1` → two `uint32` scalars |
-| s1 reduction | VPMADDWD pair-sum (full 32-bit) |
-| s2 weighted reduction | VPMADDWD pair-sum per half (full 32-bit), no VPUNPCK |
+| s1 reduction | VPADDW 16-bit-lane accumulate (wraps mod 2^16) |
+| s2 weighted reduction | VPADDW 16-bit-lane accumulate (wraps mod 2^16) |
 | PREFETCHT0 | 384 bytes ahead |
-| Loop instructions | 19 |
+| Loop instructions | 16 |
 
-> **Key technique**: Both s1 and s2 use VPMADDWD for pair-sum — one instruction multiplies adjacent int16 pairs by 1 and sums them. s2 values per half-YMM stay below 32767 (max: 64×255+63×255=32,385), so no VPADDW merge is needed; each half goes through VPMADDWD separately then VPADDD merged as int32. Both paths use deferred reduction.
+> **Key technique (16-bit lanes, v7)**: All accumulators (running s1, Σs1_before, Σweighted) are kept in 16-bit lanes. `VPADDW` wraps mod 2^16 naturally — that wrap IS the truncation — so the four `VPMADDWD` pair-sum instructions (which existed only to pack 16-bit lanes into 32-bit) are eliminated: 19 → 16 instructions, 8 → 4 multiply-ops. Per-block lane values stay < 65536 (s1 lane ≤ 510; weighted lane ≤ 32,385 < 32767 no saturation; merged ≤ 48,450 < 65536 no wrap), so nothing wraps within a block; cross-block accumulation wraps = exact mod 2^16. Bit-identical to the old 32-bit version for the low 16 bits of s1/s2 (measured +31~37% on Zen 4).
 
 ## 2. Algorithm
 
@@ -39,8 +39,8 @@ Block k (0-indexed):
 
 ```text
 s1_before_k       =  running s1 at start of block k
-delta_s1_k        =  Σ bytes in block k               (VPMADDUBSW → VPADDW → VPMADDWD)
-weighted_sum_k    =  Σ (64−i)·byte_i in block k       (VPMADDUBSW → VPMADDWD per half)
+delta_s1_k        =  Σ bytes in block k               (VPMADDUBSW → VPADDW merge)
+weighted_sum_k    =  Σ (64−i)·byte_i in block k       (VPMADDUBSW → VPADDW merge)
 s1_after_k        =  s1_before_k + delta_s1_k
 
 s1  =  Σ delta_s1_k                                    (Y14)
@@ -49,45 +49,45 @@ s2  =  64 × Σ s1_before_k  +  Σ weighted_sum_k         (Y4 = Σs1_before,  Y1
 
 ### 2.2 s1 Reduction
 
-VPMADDWD with an int16 all-ones constant (Y11):
+16-bit lanes throughout — no pair-sum widening:
 
 ```text
-VPMADDUBSW  →  VPADDW (merge halves)  →  VPMADDWD × int16_ones  →  8×int32 delta_s1
+VPMADDUBSW  →  VPADDW (merge halves)  →  VPADDW accumulate into 16-bit running s1
 ```
 
-One instruction replaces VPUNPCKLWD + VPUNPCKHWD + VPADDD (3→1). Works because byte sums stay within signed int16 range (<32767).
+VPMADDUBSW already yields per-byte-pair sums as int16 (each lane ≤ 510); the
+merge folds the two 32B halves into 16 lanes; the running sum accumulates in
+16-bit lanes and wraps mod 2^16 (exact). No VPMADDWD needed.
 
 ### 2.3 s2 Weighted Reduction
 
-VPMADDWD per half — same technique as s1. Each half's int16 values are <32767, so VPMADDWD pair-sum is safe. No VPADDW merge; halves processed independently then merged as int32.
+Also 16-bit lanes. Weighted pair-sums come straight from VPMADDUBSW (weights ×
+bytes, each lane ≤ 32,385 < 32767, no saturation); the two halves are merged
+with VPADDW (merged lane ≤ 48,450 < 65536, no wrap) and accumulated in 16-bit
+lanes (wrap = exact mod 2^16).
 
 ## 3. Loop Structure
 
-19 instructions per iteration, interleaved VPMADDUBSW:
+16 instructions per iteration (was 19 — the four VPMADDWD are gone):
 
 ```asm
 loop:
-    ; s1: VPMADDUBSW ×2 halves → VPADDW merge → VPMADDWD pair-sum
-    VPMADDUBSW  Y15, Y2, Y0        ; first 32B → 16 int16
-    VPMADDUBSW  Y15, Y8, Y6        ; second 32B → 16 int16
-    VPADDW      Y6, Y0, Y0         ; merge halves (16-bit)
-    VPMADDWD    Y11, Y0, Y0        ; pair-sum → 8×int32 delta_s1
+    ; s1: VPMADDUBSW ×2 halves → VPADDW merge → 16-bit accumulate
+    VPMADDUBSW  Y15, Y2, Y0        ; first 32B → 16 int16 pair-sums
+    VPMADDUBSW  Y15, Y8, Y6        ; second 32B → 16 int16 pair-sums
+    VPADDW      Y6, Y0, Y0         ; merge halves → 16 int16 delta_s1
 
-    ; s2: accumulate s1_before (deferred)
-    VPADDD      Y4, Y14, Y4
+    ; s2: accumulate s1_before (before the running sum updates)
+    VPADDW      Y4, Y14, Y4        ; Y4 += s1_before (wraps mod 2^16)
+    VPADDW      Y0, Y14, Y14       ; running s1 += delta (wraps mod 2^16)
 
-    ; s2: weighted sum per half
+    ; s2: weighted sum (16-bit)
     VPMADDUBSW  Y7, Y2, Y2         ; first 32B × weights [64..33]
     VPMADDUBSW  Y13, Y8, Y3        ; second 32B × weights [32..1]
-    VPMADDWD    Y11, Y2, Y2        ; first half → 8 int32 pair-sums
-    VPMADDWD    Y11, Y3, Y3        ; second half → 8 int32
-    VPADDD      Y3, Y2, Y2         ; merge halves (32-bit)
-    VPADDD      Y12, Y2, Y12       ; Y12 += weighted_sum
+    VPADDW      Y3, Y2, Y2         ; merge halves → 16 int16 weighted
+    VPADDW      Y2, Y12, Y12       ; Y12 += weighted (wraps mod 2^16)
 
     PREFETCHT0  384(DI)            ; 6 cachelines ahead
-
-    ; s1: accumulate delta
-    VPADDD      Y14, Y0, Y14
 
     ; bottom-load next block with OOB guard
     SUBQ  $1, SI
@@ -109,16 +109,20 @@ done:
 
 ## 4. Exit Reduction
 
-### 4.1 Initial Value Correction
+### 4.1 Exit Reduction & Initial Value Correction
 
-Y14 tracks raw byte sums only (init_s1 not broadcast):
+16-bit lanes are reduced to scalar with VPSRLDQ byte shifts of $8/$4/$2
+(4/2/1 lanes) + VPADDW — three steps for 16 lanes (the old 32-bit version
+needed only two). Everything below is mod 2^16:
 
 ```text
-s1 = reduce(Y14) + init_s1
-s2 = 64 × [reduce(Y4) + N × init_s1] + reduce(Y12) + init_s2
+s1 = reduce16(Y14) + init_s1
+s2 = 64 × reduce16(Y4) + reduce16(Y12) + 64·N·init_s1 + init_s2
 ```
 
-`N` = number of 64B blocks. `init_s1` and `init_s2` read from caller pointers.
+`N` = number of 64B blocks. `init_s1`/`init_s2` read from caller pointers.
+The 64× scale of Σs1_before is applied on the reduced scalar (`SHLL $6`)
+in 32-bit, then masked to 16 bits — exact mod 2^16.
 
 ### 4.2 CHAR_OFFSET Post-Correction
 
@@ -150,15 +154,18 @@ Asm handles all bytes — full 64B blocks plus scalar remainder (0..63 bytes) in
 | v4 | VPMADDWD pair-sum for s1 (−2 instrs) | 20 | — | 69.2 GB/s |
 | v5 | VPMADDWD per-half for s2 + asm remainder + merged exit | 19 | 35.1 GB/s | — |
 | v6 | CHAR_OFFSET + packing in asm, combined ones table | 19 | 37.4 GB/s | — |
+| v7 | **16-bit lanes** (VPADDW wrap = mod 2^16), drop all VPMADDWD | **16** | — | 111.4 GB/s |
 
-**Cumulative**: 28→19 instructions (−32%). Xeon 1KB throughput +38%.
-(The instruction counts are objective; the throughput columns are historical
-measurements from the legacy Xeon cloud VM and early Ryzen runs. The Xeon
-numbers may be inaccurate — that VM was cache-limited with unrecorded
-methodology — and are kept only to show the optimisation trend. See
-[benchmarks.md](benchmarks.md) for current numbers.)
+**Cumulative**: 28→16 instructions (−43%). v7 is the 16-bit-lane rewrite
+(2026-08-02): all accumulators stay in 16-bit lanes, VPADDW wrap is the
+truncation, so the four VPMADDWD pair-sums are deleted. Measured on Zen 4:
++37% at 64KB (80.2→111.4 GB/s), +35% at 1MB, +16% at 1KB. SSE2 got the same
+treatment (19→16 insns, +48% at 64KB: 38.6→57.3 GB/s).
 
-> **Rejected optimization**: VPSRLD for packed reduction (3→2 instructions). High 16 bits contain garbage, causing s1 amplification by 32768×. The vector reduction must stay full-32-bit correct: `Checksum1`/`Checksum1Components` expose full `s1`/`s2` (cross-machine parity compares them), even though `RollingSum.Roll` now truncates to 16 bits (see §5.2).
+> **Rejected optimization (superseded by v7)**: VPSRLD for packed reduction
+> (3→2 instructions). High 16 bits contain garbage, causing s1 amplification
+> by 32768×. v7 reduces at 16-bit precision correctly — via VPSRLDQ+VPADDW
+> on 16-bit lanes, never via VPSRLD on 32-bit lanes.
 
 ### 5.1 CHAR_OFFSET Post-Correction Overflow
 
@@ -190,7 +197,8 @@ sizes (every divergence-interval boundary, zero and random data): `s1`
 identical, `s2` low 16 bits identical, and every full-`s2` difference
 `xor == 0x80000000`. The divergence is only observable via
 `Checksum1Components` (full `s1`/`s2`) compared across machines — a
-comparison go-rsync never performs.
+comparison go-rsync never performs. (Since the v7 16-bit-lane rewrite,
+amd64 `Checksum1Components` returns mod-2^16 values anyway.)
 
 Verified by `TestChecksum1Parity` in `delta_test.go`.
 
@@ -205,10 +213,12 @@ all consumers (`Value`, `S1`, `S2`) only ever read the low 16 bits, and
 homomorphism of the same arithmetic. It turns `Value` into a single OR
 (`s1 | (s2<<16)`), removing two ANDs from the search hot path.
 
-This does **not** relax the assembly paths: `checksum1AVX2`/`checksum1SSE2`
-still return full 32-bit values, because `Checksum1Components` and the
-cross-machine parity tests compare full `s1`/`s2` (see §5 and
-`TestChecksum1Parity`).
+The v7 rewrite (2026-08-02) extends the same principle INTO the assembly:
+`checksum1AVX2`/`checksum1SSE2` now keep 16-bit lanes and return raw sums
+truncated to 16 bits — eliminating the four VPMADDWD pair-sums (19→16
+instructions, +31~37% on Zen 4). Parity tests (`TestAVX2Parity`/
+`TestSSE2Parity`) compare the low 16 bits; `Checksum1Components` on amd64
+now returns mod-2^16 components (arm64/generic still return full 32-bit).
 
 ## 6. Assembly Notes
 
@@ -300,12 +310,11 @@ dependencies.
 | Register | Purpose | Lifetime |
 | ---------- | --------- | ---------- |
 | Y15 | all-ones table (0x01 × 32) | constant |
-| Y11 | int16 all-ones (0x0001 × 16) | constant |
 | Y7 | weight table [64..33] | constant |
 | Y13 | weight table [32..1] | constant |
 | Y2 | current 64B block, first 32B | per iteration |
 | Y8 | current 64B block, second 32B | per iteration |
-| Y0 | temp (s1 delta via VPMADDWD) | per iteration |
+| Y0 | temp (s1 delta, 16-bit) | per iteration |
 | Y3 | s2 second half | per iteration |
 | Y6 | temp (s1/s2 second half) | per iteration |
 | Y14 | accumulated s1 (vector, raw bytes only) | across iterations |
@@ -356,33 +365,34 @@ End-to-end delta round-trip, identical files, example usage.
 > v0–v6 optimisation table keeps its legacy Xeon 1KB column for trend
 > comparison only.
 
-**AMD Ryzen 9 8940HX (Zen 4, laptop) — 500 ms time-boxed, median of 3 runs:**
+**AMD Ryzen 9 8940HX (Zen 4, laptop) — 500 ms time-boxed, median of 3 runs.**
+Numbers below are the post-v7 (16-bit-lane) values unless noted:
 
 | Block Size | go-rsync | v1 (baseline) | Improvement |
 | ------------ | :-----------: | :-------------: | :-----------: |
-| 1 KB | 64.2 GB/s | 44.8 GB/s | +43% |
-| 64 KB | 80.2 GB/s | 51.5 GB/s | +56% |
-| 1 MB | 80.4 GB/s | 51.2 GB/s | +57% |
+| 1 KB | 80.8 GB/s | 44.8 GB/s | +80% |
+| 64 KB | 111.4 GB/s | 51.5 GB/s | +116% |
+| 1 MB | 107.7 GB/s | 51.2 GB/s | +110% |
 
 **Three-tier comparison (Ryzen 9, 64KB):**
 
 | Tier | Throughput | vs AVX2 |
 | ------ | :----------: | :-------: |
-| AVX2 (64B/iter) | 80.2 GB/s | — |
-| SSE2 (32B/iter) | 38.6 GB/s | 2.0× slower |
-| Pure Go (128B batch) | 1.9 GB/s | 40× slower |
+| AVX2 (64B/iter) | 111.4 GB/s | — |
+| SSE2 (32B/iter) | 57.3 GB/s | 1.9× slower |
+| Pure Go (128B batch) | 2.08 GB/s | 54× slower |
 
 ## A. SSE2 Path
 
-SSE2 path (32B/iter via XMM registers). Uses the same
-VPADDW+VPMADDWD pattern as AVX2.
+SSE2 path (32B/iter via XMM registers). Uses the same 16-bit-lane
+VPADDW-wraps-mod-2^16 pattern as AVX2 (no VPMADDWD).
 
 | Aspect | AVX2 | SSE2 |
 | -------- | ------ | ------ |
-| s1 reduction | VPMADDWD pair-sum | VPADDW merge + VPMADDWD pair-sum |
-| s2 reduction | VPMADDWD per-half | VPMADDWD per-half |
+| s1 reduction | VPADDW 16-bit accumulate | VPADDW 16-bit accumulate |
+| s2 reduction | VPADDW 16-bit accumulate | VPADDW 16-bit accumulate |
 | Block size | 64B/iter | 32B/iter |
-| Loop instructions | 19 | 19 |
+| Loop instructions | 16 | 16 |
 
 ## B. Per-Size Benchmarks
 

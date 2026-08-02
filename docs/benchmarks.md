@@ -48,10 +48,13 @@ md5 dispatch: blockSize ≥ 2 KB → AVX-512 16-way, otherwise AVX2 8-way.
 
 | Size | Time | Throughput | B/op | allocs/op |
 |------|------|-----------|------|-----------|
-| 1 KB | ~16.0 ns | 64.2 GB/s | 0 | 0 |
-| 8 KB | ~104 ns | 79.0 GB/s | 0 | 0 |
-| 64 KB | ~817 ns | 80.2 GB/s | 0 | 0 |
-| 1 MB | ~13.1 µs | 80.4 GB/s | 0 | 0 |
+| 1 KB | ~12.7 ns | 80.8 GB/s | 0 | 0 |
+| 8 KB | ~74.8 ns | 109.5 GB/s | 0 | 0 |
+| 64 KB | ~588 ns | 111.4 GB/s | 0 | 0 |
+| 1 MB | ~9.73 µs | 107.7 GB/s | 0 | 0 |
+
+(v7 16-bit-lane rewrite, 2026-08-02: 19→16 instructions, no VPMADDWD. Pre-v7:
+64.2 / 79.0 / 80.2 / 80.4 GB/s.)
 
 ## Rolling checksum vs rsync (AVX2, same machine, WSL2 Linux)
 

@@ -25,9 +25,10 @@ func Checksum1(data []byte) uint32 {
 }
 
 // Checksum1Components returns the raw (s1, s2) components of the rolling
-// checksum, following the same dispatch as Checksum1.  Useful for
-// cross-machine parity verification where the full 32-bit values matter
-// (the packed Checksum1 discards the upper 16 bits of each component).
+// checksum, following the same dispatch as Checksum1. On amd64 the 16-bit-lane
+// assembly returns components truncated to 16 bits (only the low 16 bits are
+// meaningful — the wire format packs s1|(s2<<16)); on arm64 and generic
+// platforms they are full 32-bit. Currently unused by production code.
 func Checksum1Components(data []byte) (s1, s2 uint32) {
 	n := len(data)
 	if n == 0 {
