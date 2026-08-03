@@ -22,10 +22,17 @@
 
 | | |
 |---|---|
-| Aliyun spec | ecs.ebmc6.26xlarge (ebmc6 compute bare-metal, 104 vCPU / 192 GiB) |
-| CPU | Intel Xeon Platinum 8269CY (Cascade Lake, 2 sockets × 26 cores / 104 threads) |
-| L3 cache | 35.75 MiB per socket (2 sockets = 71.5 MiB total; `lscpu -C` ONE-SIZE=35.8M/ALL-SIZE=71.5M, sysfs index3=36608K) |
-| OS / Go | Ubuntu 26.04 / go1.26.5 |
+| Aliyun spec | ecs.ebmc6.26xlarge (ebmc6 compute bare-metal, 104 vCPU / 192 GiB, 15 AZs) |
+| CPU | Intel Xeon Platinum 8269CY, Cascade Lake, 2.5 GHz base / 3.8 GHz max |
+| Cores | 2 sockets × 26 cores = 52 cores / 104 threads (2 threads/core) |
+| L1 cache | 32K data + 32K instr per core (8-way) |
+| L2 cache | 1 MiB per core (16-way) |
+| L3 cache | 35.75 MiB per socket (11-way), 71.5 MiB total — `lscpu -C` ONE-SIZE=35.8M / ALL-SIZE=71.5M, sysfs `index3`=36608K |
+| NUMA | 2 nodes (node0 0-25,52-77; node1 26-51,78-103) |
+| Memory | 187 GiB usable (spec 192 GiB), DDR4-2666 ECC, Hynix 16 GB DIMMs |
+| Disk | 20 GB system (vda, `/`) |
+| Network | virtio NIC (cloud IO virt; CPU itself is bare-metal, `systemd-detect-virt` = none) |
+| OS / Go | Ubuntu 26.04 (kernel 7.0.0) / go1.26.5 |
 
 ## GenerateSignature (1 MB data, single-threaded, blockSize=700)
 
