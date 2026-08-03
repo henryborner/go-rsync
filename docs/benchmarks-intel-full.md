@@ -55,21 +55,22 @@ peak 36.4 GB/s. go-rsync leads ~30–42% at 8 KB+ (1 MB 15–30%).
 
 Single-ZMM 64 B/iter rolling checksum (`Checksum1AVX512`, ~10 insns/loop vs
 AVX2 15/16), parity-verified (64 B–1 MB). csumdiag time-boxed comparison,
-AVX2 vs AVX-512 (mode 0 vs 4):
+AVX2 vs AVX-512 (mode 0 vs 4). AMD column re-measured on the dev machine with
+the merged opt-in `Checksum1AVX512`; Intel column on `120.26.249.55`:
 
 | Block | AMD AVX2 | AMD AVX512 | Intel AVX2 | Intel AVX512 |
 |-------|:--------:|:----------:|:----------:|:------------:|
-| 1 KB | 74.3 | 48.7 | 30.6 | 21.7 |
-| 8 KB | 101.3 | 92.8 | 47.5 | 46.8 |
-| 16 KB | 105.2 | 98.4 | 50.1 | 54.0 |
-| 32 KB | 105.4 | 98.7 | 48.9 | 56.0 |
-| 64 KB | 104.5 | 101.1 | 47.3 | 58.9 |
-| 128 KB | 106.1 | 102.6 | 48.3 | 61.0 |
-| 256 KB | 106.4 | 104.5 | 48.8 | 62.0 |
-| 1 MB | 100.2 | 104.1 | 40.5 | 43.9 |
+| 1 KB | 77.2 | 49.0 | 30.6 | 21.7 |
+| 8 KB | 106.9 | 95.9 | 47.5 | 46.8 |
+| 16 KB | 110.4 | 100.7 | 50.1 | 54.0 |
+| 32 KB | 108.8 | 101.8 | 48.9 | 56.0 |
+| 64 KB | 110.1 | 101.7 | 47.3 | 58.9 |
+| 128 KB | 111.0 | 104.2 | 48.3 | 61.0 |
+| 256 KB | 111.3 | 105.0 | 48.8 | 62.0 |
+| 1 MB | 103.1 | 104.4 | 40.5 | 43.9 |
 
 Conclusion: on Intel (Cascade Lake full-width 512-bit units) ZMM wins +8–27%
-from 16 KB up; on Zen 4 ZMM loses everywhere (−2 to −34%). AVX-512 rolling
+from 16 KB up; on Zen 4 ZMM loses everywhere (−6 to −37%). AVX-512 rolling
 checksum stays off for AMD; the opt-in `Checksum1AVX512` is exposed for users
 who benchmark it faster on their own Intel server hardware. Not guaranteed on
 all Intel CPUs — benchmark on your own hardware before enabling.

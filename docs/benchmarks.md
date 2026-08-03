@@ -249,8 +249,8 @@ harness on the Intel machine vs the AVX2 path:
   Cascade Lake's full-width 512-bit integer SIMD (ZMM at the same throughput
   as YMM) makes the fewer-instruction ZMM loop pay off. 1 MB ties (memory
   bandwidth bound). Below 8 KB the ZMM fixed overhead loses.
-- **On Zen 4 the same ZMM loop is *slower* everywhere** (1 KB −34% to
-  256 KB −2%): AMD's 512-bit integer throughput is half-width plus
+- **On Zen 4 the same ZMM loop is *slower* everywhere** (1 KB −37% to
+  256 KB −6%): AMD's 512-bit integer throughput is half-width plus
   AVX-512 frequency downclocking. This confirms AVX-512 rolling checksums
   stay off for AMD; the opt-in `Checksum1AVX512` is exposed for users who
   benchmark it faster on their own Intel server hardware.
