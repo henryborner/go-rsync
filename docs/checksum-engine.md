@@ -166,7 +166,9 @@ Asm handles all bytes — full 64B blocks plus scalar remainder (0..63 bytes) in
 (2026-08-02): all accumulators stay in 16-bit lanes, VPADDW wrap is the
 truncation, so the four VPMADDWD pair-sums are deleted. Measured on Zen 4:
 +37% at 64KB (80.2→111.4 GB/s), +35% at 1MB, +16% at 1KB. SSE2 got the same
-treatment (19→16 insns, +48% at 64KB: 38.6→57.3 GB/s).
+treatment (19→16 insns, +48% at 64KB: 38.6→57.3 GB/s). (The "16" is the
+pre-conditional-prefetch v7 count; today the loop is 15 (no-prefetch) / 16
+(≥ 64 KB prefetch) — see §3.)
 
 **Conditional prefetch (2026-08-03)**: `PREFETCHT0 384(DI)` now runs only for
 blocks ≥ 64 KB; smaller sizes use a no-prefetch loop body (no per-iteration

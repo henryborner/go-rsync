@@ -208,15 +208,15 @@ cross-checked with `go test -bench`.
 #### Observations (Intel vs AMD)
 
 - **Absolute throughput is ~40% of the AMD machine** (go-rsync peak 50.2 vs
-  113.6 GB/s; rsync 36.5 vs 82.6): 2.5–3.8 GHz vs 4.5–5.2 GHz clock, plus
+  112.9 GB/s; rsync 36.4 vs 81.8): 2.5–3.8 GHz vs 4.5–5.2 GHz clock, plus
   lower per-cycle AVX2 integer-SIMD throughput on Intel (Cascade Lake
   VPMADDUBSW 256-bit is ~1/cycle vs 2/cycle on Zen 4).
 - **go-rsync still leads, but by less than on AMD**: ~30–42% at 8 KB+
-  (peak +42% at 16 KB) vs 38–53% on AMD. With 4 VPMADDUBSW per iteration
-  saturating Intel's narrower SIMD throughput, both sides hit the same
-  throughput wall, which compresses go-rsync's dependency-chain advantage
-  (the 16-bit-lane no-fold trick pays off more on AMD, where throughput is
-  not the binding constraint).
+  (1 MB drops to +23%, memory-bandwidth bound) vs ~35–51% on AMD. With
+  4 VPMADDUBSW per iteration saturating Intel's narrower SIMD throughput,
+  both sides hit the same throughput wall, which compresses go-rsync's
+  dependency-chain advantage (the 16-bit-lane no-fold trick pays off more
+  on AMD, where throughput is not the binding constraint).
 - **The Intel 4 KB dip is fixed by the conditional-prefetch change**
   (2026-08-03): with `PREFETCHT0` skipped for blocks < 64 KB, go-rsync's
   4 KB reading rose 30.3 → 46.1 GB/s (+52%) and the 2–32 KB range gained
@@ -313,7 +313,7 @@ cross-checked with `go test -bench`.
 
 #### AVX-512 rolling checksum experiment (2026-08-03)
 
-A single-ZMM 64 B/iter rolling checksum (~11 insns vs AVX2's 16) was written
+A single-ZMM 64 B/iter rolling checksum (~10 insns vs AVX2's 15/16) was written
 and parity-verified (64 B–1 MB). Measured with the csumdiag time-boxed
 harness on this machine vs the AVX2 path:
 

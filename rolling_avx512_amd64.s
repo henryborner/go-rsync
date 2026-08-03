@@ -1,5 +1,6 @@
-// AVX-512 rolling checksum (opt-in): 64B/iter, single ZMM, ~11 insns/loop
-// vs 16 for AVX2. 16-bit-lane VPADDW wraps mod 2^16 (same math as the AVX2 v7).
+// AVX-512 rolling checksum (opt-in): 64B/iter, single ZMM, ~10 insns/loop
+// vs 15/16 for AVX2 (no-prefetch / prefetch bodies). 16-bit-lane VPADDW wraps
+// mod 2^16 (same math as the AVX2 v7).
 // Exposed as Checksum1AVX512 (explicit opt-in) — NOT part of the default
 // dispatch. Measured faster than AVX2 only on Intel server Xeons (full-width
 // 512-bit integer units) for blocks ≥ 16 KB (+8~27%); slower on AMD Zen 4.

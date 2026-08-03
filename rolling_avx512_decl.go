@@ -5,7 +5,7 @@ package delta
 import "golang.org/x/sys/cpu"
 
 // checksum1AVX512 is the opt-in AVX-512 single-ZMM rolling checksum
-// (64 B/iter, ~11 insns/loop, 16-bit-lane). Returns raw sums truncated to
+// (64 B/iter, ~10 insns/loop, 16-bit-lane). Returns raw sums truncated to
 // 16 bits. Must only be called when cpu.X86.HasAVX512 is true, otherwise the
 // ZMM instructions fault (SIGILL).
 func checksum1AVX512(data []byte, s1, s2 *uint32) bool

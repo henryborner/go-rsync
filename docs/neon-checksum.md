@@ -9,7 +9,7 @@
 | Feature | Value |
 |---------|-------|
 | Architecture | ARM64 NEON (128-bit SIMD) |
-| Current version | **v0.4.3** — tiered UDOT / VUMULL dispatch |
+| Current version | **v0.4.6** — tiered UDOT / VUMULL dispatch |
 | UDOT path | 4 insns/64B, **27 GB/s** (requires dotprod) |
 | VUMULL path | 20 insns/64B, **12 GB/s** (all ARM64) |
 | Block size | 2×32B per iteration (64B unrolled) |
