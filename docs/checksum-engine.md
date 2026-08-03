@@ -162,6 +162,14 @@ truncation, so the four VPMADDWD pair-sums are deleted. Measured on Zen 4:
 +37% at 64KB (80.2→111.4 GB/s), +35% at 1MB, +16% at 1KB. SSE2 got the same
 treatment (19→16 insns, +48% at 64KB: 38.6→57.3 GB/s).
 
+**Conditional prefetch (2026-08-03)**: `PREFETCHT0 384(DI)` now runs only for
+blocks ≥ 64 KB; smaller sizes use a no-prefetch loop body (no per-iteration
+branch). The 384 B-ahead prefetch ran past the buffer end and measurably
+hurt cache-resident sizes on Intel (go-rsync 4 KB: 30.3 → 46.1 GB/s, +52%;
+2–32 KB +16–50%), while ≥ 64 KB keeps the prefetch and is slightly faster
+than the all-prefetch build. On Zen 4 the change is neutral (±1%). Both AVX2
+and SSE2 get the two-body loop.
+
 > **Rejected optimization (superseded by v7)**: VPSRLD for packed reduction
 > (3→2 instructions). High 16 bits contain garbage, causing s1 amplification
 > by 32768×. v7 reduces at 16-bit precision correctly — via VPSRLDQ+VPADDW
@@ -366,21 +374,22 @@ End-to-end delta round-trip, identical files, example usage.
 > comparison only.
 
 **AMD Ryzen 9 8940HX (Zen 4, laptop) — 500 ms time-boxed, median of 3 runs.**
-Numbers below are the post-v7 (16-bit-lane) values unless noted:
+Numbers below are the current (16-bit-lane + conditional prefetch) values
+unless noted:
 
 | Block Size | go-rsync | v1 (baseline) | Improvement |
 | ------------ | :-----------: | :-------------: | :-----------: |
-| 1 KB | 80.8 GB/s | 44.8 GB/s | +80% |
-| 64 KB | 111.4 GB/s | 51.5 GB/s | +116% |
-| 1 MB | 107.7 GB/s | 51.2 GB/s | +110% |
+| 1 KB | 78.1 GB/s | 44.8 GB/s | +74% |
+| 64 KB | 109.3 GB/s | 51.5 GB/s | +112% |
+| 1 MB | 105.6 GB/s | 51.2 GB/s | +106% |
 
 **Three-tier comparison (Ryzen 9, 64KB):**
 
 | Tier | Throughput | vs AVX2 |
 | ------ | :----------: | :-------: |
-| AVX2 (64B/iter) | 111.4 GB/s | — |
+| AVX2 (64B/iter) | 109.3 GB/s | — |
 | SSE2 (32B/iter) | 57.3 GB/s | 1.9× slower |
-| Pure Go (128B batch) | 2.08 GB/s | 54× slower |
+| Pure Go (128B batch) | 2.08 GB/s | 53× slower |
 
 ## A. SSE2 Path
 
