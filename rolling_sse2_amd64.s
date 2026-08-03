@@ -46,7 +46,35 @@ TEXT ·checksum1SSE2(SB), NOSPLIT, $0-41
 	MOVQ    SI, R12                 // R12 = N
 	ADDQ    $32, DI
 
-loop:
+	// Conditional prefetch (same rationale as AVX2): PREFETCHT0 helps only
+	// for blocks that leave the cache (> ~64 KB). Two loop bodies.
+	CMPQ    SI, $2048               // N = len/32 ≥ 2048 → len ≥ 64 KB
+	JGE     pf_loop_sse
+
+nopf_loop_sse:
+	// s1 (16-bit)
+	VPMADDUBSW X15, X2, X0          // first 16B → 8 int16 pair-sums
+	VPMADDUBSW X15, X8, X1          // second 16B → 8 int16 pair-sums
+	VPADDW X1, X0, X0               // merge halves → 8 int16 delta_s1
+	// X4 must capture s1_before BEFORE the running sum is updated.
+	VPADDW X4, X14, X4              // X4 += s1_before (wraps)
+	VPADDW X0, X14, X14             // running s1 += delta (wraps mod 2^16)
+
+	// s2 weighted (16-bit)
+	VPMADDUBSW X7, X2, X2           // first 16B × [32..17] → 8 int16
+	VPMADDUBSW X13, X8, X6          // second 16B × [16..1] → 8 int16
+	VPADDW X6, X2, X2               // merge halves → 8 int16 per-block weighted
+	VPADDW X2, X12, X12             // X12 += weighted (wraps mod 2^16)
+
+	// Next block
+	SUBQ    $1, SI
+	JZ      done
+	MOVOU   0(DI), X2
+	MOVOU   16(DI), X8
+	ADDQ    $32, DI
+	JMP     nopf_loop_sse
+
+pf_loop_sse:
 	// s1 (16-bit)
 	VPMADDUBSW X15, X2, X0          // first 16B → 8 int16 pair-sums
 	VPMADDUBSW X15, X8, X1          // second 16B → 8 int16 pair-sums
@@ -70,7 +98,7 @@ loop:
 	MOVOU   0(DI), X2
 	MOVOU   16(DI), X8
 	ADDQ    $32, DI
-	JMP     loop
+	JMP     pf_loop_sse
 
 done:
 	// Reduce X14 → s1 (8 int16 → 1)

@@ -56,7 +56,38 @@ TEXT ·checksum1AVX2(SB), NOSPLIT, $0-41
 	MOVQ    SI, R12               // R12 = N (for exit correction)
 	ADDQ    $64, DI
 
-loop:
+	// Conditional prefetch: PREFETCHT0 pays off only for blocks that leave
+	// the cache (> ~64 KB on Cascade Lake / Zen 4). For cache-resident data
+	// the 384 B-ahead prefetch runs past the buffer end and measurably hurts
+	// on Intel (4 KB dip). Two loop bodies, no per-iteration branch.
+	CMPQ    SI, $1024             // N = len/64 ≥ 1024 → len ≥ 64 KB
+	JGE     pf_loop_avx
+
+nopf_loop_avx:
+	// ═══════ s1 (16-bit) ═══════
+	VPMADDUBSW Y15, Y2, Y0        // first 32B → 16 int16 pair-sums
+	VPMADDUBSW Y15, Y8, Y6        // second 32B → 16 int16 pair-sums
+	VPADDW  Y6, Y0, Y0            // merge halves → 16 int16 delta_s1
+
+	// Y4 must capture s1_before BEFORE the running sum is updated.
+	VPADDW  Y4, Y14, Y4           // Y4 += s1_before (16-bit, wraps)
+	VPADDW  Y0, Y14, Y14          // running s1 += delta (wraps mod 2^16)
+
+	// ═══════ s2 weighted (16-bit) ═══════
+	VPMADDUBSW Y7, Y2, Y2         // first 32B × weights → 16 int16
+	VPMADDUBSW Y13, Y8, Y3        // second 32B × weights → 16 int16
+	VPADDW  Y3, Y2, Y2            // merge halves → 16 int16 per-block weighted
+	VPADDW  Y2, Y12, Y12          // Y12 += weighted (wraps mod 2^16)
+
+	// ── Load next block (check before load to avoid OOB) ──
+	SUBQ    $1, SI
+	JZ      done
+	VMOVDQU 0(DI), Y2             // next first 32B → Y2
+	VMOVDQU 32(DI), Y8            // next second 32B → Y8
+	ADDQ    $64, DI
+	JMP     nopf_loop_avx
+
+pf_loop_avx:
 	// ═══════ s1 (16-bit) ═══════
 	VPMADDUBSW Y15, Y2, Y0        // first 32B → 16 int16 pair-sums
 	VPMADDUBSW Y15, Y8, Y6        // second 32B → 16 int16 pair-sums
@@ -81,7 +112,7 @@ loop:
 	VMOVDQU 0(DI), Y2             // next first 32B → Y2
 	VMOVDQU 32(DI), Y8            // next second 32B → Y8
 	ADDQ    $64, DI
-	JMP     loop
+	JMP     pf_loop_avx
 
 done:
 	// ═══ s1: reduce 16 lanes → scalar ═══
@@ -188,7 +219,28 @@ TEXT ·checksum1PackedAVX2(SB), NOSPLIT, $0-28
 	SHRQ    $6, SI
 	ADDQ    $64, DI
 
-ploop:
+	// Conditional prefetch (same rationale as checksum1AVX2).
+	CMPQ    SI, $1024             // N = len/64 ≥ 1024 → len ≥ 64 KB
+	JGE     ppf_loop
+
+pnopf_loop:
+	VPMADDUBSW Y15, Y2, Y0
+	VPMADDUBSW Y15, Y8, Y6
+	VPADDW  Y6, Y0, Y0
+	VPADDW  Y4, Y14, Y4
+	VPADDW  Y0, Y14, Y14
+	VPMADDUBSW Y7, Y2, Y2
+	VPMADDUBSW Y13, Y8, Y3
+	VPADDW  Y3, Y2, Y2
+	VPADDW  Y2, Y12, Y12
+	SUBQ    $1, SI
+	JZ      pdone
+	VMOVDQU 0(DI), Y2
+	VMOVDQU 32(DI), Y8
+	ADDQ    $64, DI
+	JMP     pnopf_loop
+
+ppf_loop:
 	VPMADDUBSW Y15, Y2, Y0
 	VPMADDUBSW Y15, Y8, Y6
 	VPADDW  Y6, Y0, Y0
@@ -204,7 +256,7 @@ ploop:
 	VMOVDQU 0(DI), Y2
 	VMOVDQU 32(DI), Y8
 	ADDQ    $64, DI
-	JMP     ploop
+	JMP     ppf_loop
 
 pdone:
 	// s1 reduce 16 lanes → scalar
