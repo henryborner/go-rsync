@@ -103,6 +103,14 @@ Windows 11, Go 1.26.5 — the same machine used for the full tables in
 | 64 KB | **109 GB/s** |
 | 1 MB | **106 GB/s** |
 
+> **Opt-in AVX-512**: `Checksum1AVX512(data []byte)` forces the single-ZMM
+> 64 B/iter path. Faster than AVX2 only on Intel server Xeons (full-width
+> 512-bit integer units) for blocks ≥ 16 KB (up to +27% at 256 KB); on AMD
+> Zen 4 it is slower, and on CPUs without AVX-512 it falls back to
+> `Checksum1`. The default `Checksum1` is unchanged (auto AVX2 → SSE2 → Go).
+> See [docs/benchmarks.md](docs/benchmarks.md) → "AVX-512 rolling checksum
+> experiment".
+
 > Per-size curves, allocation counts (B/op, allocs/op), the streaming
 > `SignatureReader` results, and the rsync AVX2 comparison (deterministic +
 > random data): [docs/benchmarks.md](docs/benchmarks.md).
