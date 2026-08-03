@@ -224,6 +224,105 @@ cross-checked with `go test -bench`.
   all-prefetch build. rsync's 2 KB dip (20.5 GB/s) is its own OOB-prefetch
   artifact and remains (rsync prefetches unconditionally).
 
+### Intel Xeon 8269CY — full benchmark suite (reference only)
+
+> Single run (`-test.count=1`) on the same Aliyun bare-metal as the vs-rsync
+> rows, cross-compiled test binary, Go 1.26.5, current code (16-bit-lane +
+> conditional prefetch). **Reference only**: rented server and a single run
+> (not a median); AMD column = local Ryzen 9 values from the tables above.
+> `SignatureParallel` uses GOMAXPROCS workers, so Intel's 104-thread numbers
+> are not directly comparable to AMD's 32-thread ones.
+
+#### Signature (1 MB, single-threaded)
+
+| Algorithm | Intel GB/s | AMD GB/s |
+|-----------|:----------:|:--------:|
+| md5 (AVX2 8-way) | 1.62 | 2.93 |
+| sha256 (SHA-NI) | 0.34 | 1.62 |
+| xxh64 | 3.45 | 6.62 |
+| xxh3 | 4.22 | 8.62 |
+
+#### SignatureParallel (md5, GOMAXPROCS workers)
+
+| Data | Intel GB/s | AMD (32-thread) GB/s |
+|------|:----------:|:--------------------:|
+| 1 MB | 4.88 | 8.1 |
+| 10 MB | 19.2 | 26.9 |
+| 100 MB | 61.7 | 44.3 |
+
+#### SignatureReader (md5)
+
+| Config | Intel MB/s | AMD MB/s |
+|--------|:----------:|:--------:|
+| 10MB_700B | 1626 | 3180 |
+| 10MB_32KB | 2864 | 3260 |
+| 10MB_128KB | 2421 | 3180 |
+| 100MB_700B | 1420 | 3150 |
+| 100MB_128KB | 2214 | 3250 |
+
+#### Search / delta matching
+
+| Benchmark | Intel | AMD |
+|-----------|:-----:|:---:|
+| `Search` (90% match) | 6.41 ms | ~3.2 ms |
+| `SearchMiss` | 6.40 ms | ~3.1 ms |
+| `SearchReader` | 8.13 ms | ~3.8 ms |
+| `SearchParallel` 1w | 6.41 ms | 3.1 ms |
+| `SearchParallel` 2w | 4.15 ms | 1.8 ms |
+| `SearchParallel` 4w | 2.69 ms | 1.2 ms |
+| `SearchParallel` 8w | 1.60 ms | 1.0 ms |
+
+#### ApplyDelta / RoundTrip
+
+| Benchmark | Intel | AMD |
+|-----------|:-----:|:---:|
+| `ApplyDelta` Match90 | 697 MB/s | ~2.8 GB/s |
+| `ApplyDelta` AllLiteral | 679 MB/s | ~3.0 GB/s |
+| `RoundTrip` | 120 MB/s | ~250 MB/s |
+
+#### Wire format
+
+| Stream | Intel Encode | AMD Encode | Intel Decode | AMD Decode |
+|--------|:------------:|:----------:|:------------:|:----------:|
+| Signature | 436 MB/s | 1.03 GB/s | 291 MB/s | 656 MB/s |
+| Instructions | 1403 MB/s | 5.5 GB/s | 2919 MB/s | 8.2 GB/s |
+
+#### RollingSum hot path
+
+| Benchmark | Intel ns/op | AMD ns/op |
+|-----------|:-----------:|:---------:|
+| `RollOnly` | 2.83 | 1.84 |
+| `RollAndValue` | 3.16 | 2.07 |
+
+#### Checksum1 (go test harness, single run)
+
+| Size | Intel GB/s | AMD GB/s |
+|------|:----------:|:--------:|
+| 1 KB | 30.8 | 78.1 |
+| 8 KB | 46.8 | 108.2 |
+| 64 KB | 48.2 | 109.3 |
+| 1 MB | 41.3 | 105.6 |
+
+#### MD5 SIMD cores
+
+| Benchmark | Intel | AMD |
+|-----------|:-----:|:---:|
+| `MD5x8_Bulk` (AVX2) | 2540 MB/s | 4.26 GB/s |
+| `MD5x8Core_Bulk` (AVX2 raw) | 3890 MB/s | 6.31 GB/s |
+| `MD5x16Core_Bulk` (AVX-512 raw) | 10562 MB/s | 11.24 GB/s |
+
+**Observations**
+
+- **AVX-512 near-parity**: `MD5x16Core_Bulk` on Intel's full-width 512-bit
+  units is 10.56 GB/s vs 11.24 GB/s on Zen 4 — the big Intel gap on AVX2
+  integer SIMD nearly disappears on AVX-512.
+- **`SignatureParallel` 100 MB is *higher* on Intel** (61.7 vs 44.3 GB/s)
+  purely because it fans out to GOMAXPROCS (104 vs 32 threads) — not a
+  single-core win, and not comparable to the AMD row.
+- Everything single-threaded is ~1.9–2.6× slower on Intel (2.5 GHz clock +
+  narrower integer SIMD): signature hashing, Search, ApplyDelta, wire encode.
+- Raw output archived in [benchmarks-intel-full.md](benchmarks-intel-full.md).
+
 ### Reproducing this comparison
 
 The two tools are kept out of this repository: the rsync side links GPL code,
