@@ -160,6 +160,66 @@ cross-checked with `go test -bench`.
 | 256 KB | 113.4 | 82.6 |
 | 1 MB | 104.6 | 80.6 |
 
+### Intel Xeon 8269CY (Aliyun bare-metal) — reference only
+
+> Measured 2026-08-03 on an **Intel Xeon Platinum 8269CY bare-metal server**
+> (Aliyun, 2 sockets × 26 cores = 52 cores / 104 threads, 2.5 GHz base /
+> 3.8 GHz max, Cascade Lake generation, full 71.5 MiB L3 per socket).
+> Same tooling and methodology as the AMD rows (time-boxed 500 ms, 5 rounds,
+> median, alternating execution order). **Reference only**: unlike the AMD
+> numbers (measured on the local machine), this is a rented Aliyun server —
+> CPU frequency, Turbo behavior, and virtualization/neighbor conditions are
+> not under our control and may drift between sessions.
+
+#### Deterministic data
+
+| Block size | go-rsync GB/s | rsync AVX2 GB/s |
+|-----------|--------------|-----------------|
+| 1 KB | 32.8 | 24.2 |
+| 2 KB | 39.1 | 20.5 |
+| 4 KB | 30.3 | 32.2 |
+| 8 KB | 36.0 | 33.8 |
+| 16 KB | 40.5 | 35.2 |
+| 32 KB | 43.2 | 36.0 |
+| 64 KB | 44.7 | 36.5 |
+| 128 KB | 45.6 | 35.7 |
+| 256 KB | 46.1 | 35.8 |
+| 1 MB | 41.9 | 32.2 |
+
+#### Random data
+
+| Block size | go-rsync GB/s | rsync AVX2 GB/s |
+|-----------|--------------|-----------------|
+| 1 KB | 31.8 | 23.6 |
+| 2 KB | 38.7 | 20.4 |
+| 4 KB | 30.3 | 32.4 |
+| 8 KB | 36.4 | 33.9 |
+| 16 KB | 40.5 | 35.4 |
+| 32 KB | 43.2 | 35.9 |
+| 64 KB | 44.7 | 36.4 |
+| 128 KB | 45.6 | 35.3 |
+| 256 KB | 46.1 | 35.4 |
+| 1 MB | 42.1 | 31.8 |
+
+#### Observations (Intel vs AMD)
+
+- **Absolute throughput is ~40% of the AMD machine** (go-rsync peak 46.1 vs
+  113.6 GB/s; rsync 36.5 vs 82.6): 2.5–3.8 GHz vs 4.5–5.2 GHz clock, plus
+  lower per-cycle AVX2 integer-SIMD throughput on Intel (Cascade Lake
+  VPMADDUBSW 256-bit is ~1/cycle vs 2/cycle on Zen 4).
+- **go-rsync still leads, but by less**: ~7–30% at 8 KB+ (peak +26% at
+  256 KB) vs 38–53% on AMD. With 4 VPMADDUBSW per iteration saturating
+  Intel's narrower SIMD throughput, both sides hit the same throughput wall,
+  which compresses go-rsync's dependency-chain advantage (the 16-bit-lane
+  no-fold trick pays off more on AMD, where throughput is not the binding
+  constraint).
+- **Intel-only anomalies** (not present on AMD): go-rsync dips to 30.3 GB/s
+  at 4 KB (below its 2 KB reading of 39.1) and rsync dips to 20.5 GB/s at
+  2 KB (below its 1 KB reading of 23.6). The two dips are stable
+  (min = max across runs, not noise) and offset between the two tools —
+  suspected prefetch crossing the buffer end (both sides prefetch 384 B
+  ahead) or Turbo behavior; under investigation.
+
 ### Reproducing this comparison
 
 The two tools are kept out of this repository: the rsync side links GPL code,
