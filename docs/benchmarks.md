@@ -23,15 +23,17 @@
 | | |
 |---|---|
 | Aliyun spec | ecs.ebmc6.26xlarge (ebmc6 compute bare-metal, 104 vCPU / 192 GiB, 15 AZs) |
-| CPU | Intel Xeon Platinum 8269CY, Cascade Lake, 2.5 GHz base / 3.8 GHz max |
+| CPU | Intel Xeon Platinum 8269CY, Cascade Lake-SP (family 6 / model 85 / stepping 7, microcode 0x5003901), 2.5 GHz base / 3.8 GHz max, TSX disabled |
 | Cores | 2 sockets × 26 cores = 52 cores / 104 threads (2 threads/core) |
 | L1 cache | 32K data + 32K instr per core (8-way) |
 | L2 cache | 1 MiB per core (16-way) |
 | L3 cache | 35.75 MiB per socket (11-way), 71.5 MiB total — `lscpu -C` ONE-SIZE=35.8M / ALL-SIZE=71.5M, sysfs `index3`=36608K |
 | NUMA | 2 nodes (node0 0-25,52-77; node1 26-51,78-103) |
-| Memory | 187 GiB usable (spec 192 GiB), DDR4-2666 ECC, Hynix 16 GB DIMMs |
-| Disk | 20 GB system (vda, `/`) |
-| Network | virtio NIC (cloud IO virt; CPU itself is bare-metal, `systemd-detect-virt` = none) |
+| Memory | 187 GiB usable (spec 192 GiB), DDR4-2666 ECC registered, Hynix 16 GB DIMMs (HMA82GR7AFR4N-VK); NUMA node0 92.6 GiB / node1 94.4 GiB (asymmetric) |
+| Clock reality | sustained load runs at **~2.9 GHz** (`intel_cpufreq` + `performance` governor, Turbo on, but PL-limited) — all measurements here were taken at this frequency, **not** the 3.8 GHz spec |
+| Disk | 20 GB system (vda, `/`, virtio cloud disk, rotational ROTA=1) |
+| Network | virtio NIC (cloud IO virt; speed not exposed; CPU itself is bare-metal, `systemd-detect-virt` = none) |
+| BMC | ASPEED AST1150 / ASPEED Graphics (out-of-band management) |
 | OS / Go | Ubuntu 26.04 (kernel 7.0.0) / go1.26.5 |
 
 ## GenerateSignature (1 MB data, single-threaded, blockSize=700)
