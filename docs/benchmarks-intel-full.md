@@ -55,3 +55,62 @@ Notes:
 - MD5x16Core_Bulk (AVX-512): Intel 10.56 GB/s vs AMD 11.24 GB/s — near parity.
 - Checksum1 single-run here (30.8/46.8/48.2/41.3 GB/s) is lower than the
   csumdiag time-boxed numbers (33.5/47.7/47.3/39.1) due to different harness.
+
+---
+
+## count=3 median (2026-08-03, same run set re-run with -test.count=3)
+
+Medians of the three samples; full raw output was captured in the chat log.
+Structured tables live in benchmarks.md (Intel full-suite section).
+
+| Benchmark | median |
+|-----------|--------|
+| ApplyDelta Match90 | 679 MB/s (1.544 ms) |
+| ApplyDelta AllLiteral | 703 MB/s (1.492 ms) |
+| RoundTrip | 121 MB/s (8.644 ms) |
+| WireSignature Encode | 408 MB/s (135.8 µs) |
+| WireSignature Decode | 287 MB/s (193.2 µs) |
+| WireInstructions Encode | 1339 MB/s (783.5 µs) |
+| WireInstructions Decode | 2873 MB/s (365.1 µs) |
+| Signature (md5 1MB) | 1.63 GB/s (642.7 µs) |
+| SignatureSHA256 | 0.34 GB/s (3.040 ms) |
+| SignatureXXH64 | 3.42 GB/s (306.9 µs) |
+| SignatureXXH3 | 4.16 GB/s (251.7 µs) |
+| SignatureReader 10MB_700B | 1666 MB/s |
+| SignatureReader 10MB_32KB | 2916 MB/s |
+| SignatureReader 10MB_128KB | 2431 MB/s |
+| SignatureReader 100MB_700B | 1481 MB/s |
+| SignatureReader 100MB_128KB | 2332 MB/s |
+| Search | 6.46 ms |
+| SearchMiss | 6.38 ms |
+| SearchReader | 8.12 ms |
+| SearchParallel 1/2/4/8w | 6.39 / 4.05 / 2.51 / 1.60 ms |
+| RollOnly / RollAndValue | 2.83 / 3.16 ns |
+| Checksum1 1KB/8KB/64KB/1MB | 30.8 / 46.7 / 48.3 / 41.0 GB/s |
+| MD5x8_Bulk | 2541 MB/s |
+| MD5x8Core_Bulk | 3890 MB/s |
+| MD5x16Core_Bulk | 10557 MB/s |
+| SignatureParallel 1MB/10MB/100MB | 4.89 / 19.5 / 61.9 GB/s |
+
+---
+
+## AVX-512 rolling checksum experiment (2026-08-03)
+
+Single-ZMM 64B/iter rolling checksum (`checksum1AVX512`, ~11 insns/loop vs
+AVX2 16) written in tmp/go-rsync-avx512, parity-verified on AMD (64B–1MB all
+bit-identical). csumdiag time-boxed comparison, AVX2 vs AVX512 (mode 0 vs 4):
+
+| Block | AMD AVX2 | AMD AVX512 | Intel AVX2 | Intel AVX512 |
+|-------|:--------:|:----------:|:----------:|:------------:|
+| 1 KB | 74.3 | 48.7 | 30.6 | 22.1 |
+| 8 KB | 101.3 | 92.8 | 46.8 | 46.3 |
+| 16 KB | 105.2 | 98.4 | 49.6 | 53.6 |
+| 32 KB | 105.4 | 98.7 | 48.9 | 55.6 |
+| 64 KB | 104.5 | 101.1 | 47.3 | 58.7 |
+| 128 KB | 106.1 | 102.6 | 48.3 | 60.8 |
+| 256 KB | 106.4 | 104.5 | 48.8 | 61.8 |
+| 1 MB | 100.2 | 104.1 | 39.1 | 38.2 |
+
+Conclusion: on Intel (Cascade Lake full-width 512-bit units) ZMM wins +8–27%
+from 16 KB up; on Zen 4 ZMM loses everywhere (−2 to −34%). AVX-512 rolling
+checksum stays off for AMD; Intel-only ≥16 KB dispatch not implemented.

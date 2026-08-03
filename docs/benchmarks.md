@@ -226,10 +226,10 @@ cross-checked with `go test -bench`.
 
 ### Intel Xeon 8269CY — full benchmark suite (reference only)
 
-> Single run (`-test.count=1`) on the same Aliyun bare-metal as the vs-rsync
-> rows, cross-compiled test binary, Go 1.26.5, current code (16-bit-lane +
-> conditional prefetch). **Reference only**: rented server and a single run
-> (not a median); AMD column = local Ryzen 9 values from the tables above.
+> Median of 3 (`-test.count=3`) on the same Aliyun bare-metal as the
+> vs-rsync rows, cross-compiled test binary, Go 1.26.5, current code
+> (16-bit-lane + conditional prefetch). **Reference only**: rented server;
+> AMD column = local Ryzen 9 values from the tables above.
 > `SignatureParallel` uses GOMAXPROCS workers, so Intel's 104-thread numbers
 > are not directly comparable to AMD's 32-thread ones.
 
@@ -237,55 +237,55 @@ cross-checked with `go test -bench`.
 
 | Algorithm | Intel GB/s | AMD GB/s |
 |-----------|:----------:|:--------:|
-| md5 (AVX2 8-way) | 1.62 | 2.93 |
+| md5 (AVX2 8-way) | 1.63 | 2.93 |
 | sha256 (SHA-NI) | 0.34 | 1.62 |
-| xxh64 | 3.45 | 6.62 |
-| xxh3 | 4.22 | 8.62 |
+| xxh64 | 3.42 | 6.62 |
+| xxh3 | 4.16 | 8.62 |
 
 #### SignatureParallel (md5, GOMAXPROCS workers)
 
 | Data | Intel GB/s | AMD (32-thread) GB/s |
 |------|:----------:|:--------------------:|
-| 1 MB | 4.88 | 8.1 |
-| 10 MB | 19.2 | 26.9 |
-| 100 MB | 61.7 | 44.3 |
+| 1 MB | 4.89 | 8.1 |
+| 10 MB | 19.5 | 26.9 |
+| 100 MB | 61.9 | 44.3 |
 
 #### SignatureReader (md5)
 
 | Config | Intel MB/s | AMD MB/s |
 |--------|:----------:|:--------:|
-| 10MB_700B | 1626 | 3180 |
-| 10MB_32KB | 2864 | 3260 |
-| 10MB_128KB | 2421 | 3180 |
-| 100MB_700B | 1420 | 3150 |
-| 100MB_128KB | 2214 | 3250 |
+| 10MB_700B | 1666 | 3180 |
+| 10MB_32KB | 2916 | 3260 |
+| 10MB_128KB | 2431 | 3180 |
+| 100MB_700B | 1481 | 3150 |
+| 100MB_128KB | 2332 | 3250 |
 
 #### Search / delta matching
 
 | Benchmark | Intel | AMD |
 |-----------|:-----:|:---:|
-| `Search` (90% match) | 6.41 ms | ~3.2 ms |
-| `SearchMiss` | 6.40 ms | ~3.1 ms |
-| `SearchReader` | 8.13 ms | ~3.8 ms |
-| `SearchParallel` 1w | 6.41 ms | 3.1 ms |
-| `SearchParallel` 2w | 4.15 ms | 1.8 ms |
-| `SearchParallel` 4w | 2.69 ms | 1.2 ms |
+| `Search` (90% match) | 6.46 ms | ~3.2 ms |
+| `SearchMiss` | 6.38 ms | ~3.1 ms |
+| `SearchReader` | 8.12 ms | ~3.8 ms |
+| `SearchParallel` 1w | 6.39 ms | 3.1 ms |
+| `SearchParallel` 2w | 4.05 ms | 1.8 ms |
+| `SearchParallel` 4w | 2.51 ms | 1.2 ms |
 | `SearchParallel` 8w | 1.60 ms | 1.0 ms |
 
 #### ApplyDelta / RoundTrip
 
 | Benchmark | Intel | AMD |
 |-----------|:-----:|:---:|
-| `ApplyDelta` Match90 | 697 MB/s | ~2.8 GB/s |
-| `ApplyDelta` AllLiteral | 679 MB/s | ~3.0 GB/s |
-| `RoundTrip` | 120 MB/s | ~250 MB/s |
+| `ApplyDelta` Match90 | 679 MB/s | ~2.8 GB/s |
+| `ApplyDelta` AllLiteral | 703 MB/s | ~3.0 GB/s |
+| `RoundTrip` | 121 MB/s | ~250 MB/s |
 
 #### Wire format
 
 | Stream | Intel Encode | AMD Encode | Intel Decode | AMD Decode |
 |--------|:------------:|:----------:|:------------:|:----------:|
-| Signature | 436 MB/s | 1.03 GB/s | 291 MB/s | 656 MB/s |
-| Instructions | 1403 MB/s | 5.5 GB/s | 2919 MB/s | 8.2 GB/s |
+| Signature | 408 MB/s | 1.03 GB/s | 287 MB/s | 656 MB/s |
+| Instructions | 1339 MB/s | 5.5 GB/s | 2873 MB/s | 8.2 GB/s |
 
 #### RollingSum hot path
 
@@ -294,34 +294,62 @@ cross-checked with `go test -bench`.
 | `RollOnly` | 2.83 | 1.84 |
 | `RollAndValue` | 3.16 | 2.07 |
 
-#### Checksum1 (go test harness, single run)
+#### Checksum1 (go test harness)
 
 | Size | Intel GB/s | AMD GB/s |
 |------|:----------:|:--------:|
 | 1 KB | 30.8 | 78.1 |
-| 8 KB | 46.8 | 108.2 |
-| 64 KB | 48.2 | 109.3 |
-| 1 MB | 41.3 | 105.6 |
+| 8 KB | 46.7 | 108.2 |
+| 64 KB | 48.3 | 109.3 |
+| 1 MB | 41.0 | 105.6 |
 
 #### MD5 SIMD cores
 
 | Benchmark | Intel | AMD |
 |-----------|:-----:|:---:|
-| `MD5x8_Bulk` (AVX2) | 2540 MB/s | 4.26 GB/s |
+| `MD5x8_Bulk` (AVX2) | 2541 MB/s | 4.26 GB/s |
 | `MD5x8Core_Bulk` (AVX2 raw) | 3890 MB/s | 6.31 GB/s |
-| `MD5x16Core_Bulk` (AVX-512 raw) | 10562 MB/s | 11.24 GB/s |
+| `MD5x16Core_Bulk` (AVX-512 raw) | 10557 MB/s | 11.24 GB/s |
+
+#### AVX-512 rolling checksum experiment (2026-08-03)
+
+A single-ZMM 64 B/iter rolling checksum (~11 insns vs AVX2's 16) was written
+and parity-verified (64 B–1 MB). Measured with the csumdiag time-boxed
+harness on this machine vs the AVX2 path:
+
+| Block | AVX2 GB/s | AVX-512 GB/s |
+|-------|:---------:|:------------:|
+| 1 KB | 30.6 | 22.1 |
+| 8 KB | 46.8 | 46.3 |
+| 16 KB | 49.6 | 53.6 |
+| 32 KB | 48.9 | 55.6 |
+| 64 KB | 47.3 | 58.7 |
+| 128 KB | 48.3 | 60.8 |
+| 256 KB | 48.8 | 61.8 |
+| 1 MB | 39.1 | 38.2 |
+
+- **On Intel, AVX-512 wins from 16 KB up (+8–27%, peak +27% at 256 KB)** —
+  Cascade Lake's full-width 512-bit integer SIMD (ZMM at the same throughput
+  as YMM) makes the fewer-instruction ZMM loop pay off. 1 MB ties (memory
+  bandwidth bound). Below 8 KB the ZMM fixed overhead loses.
+- **On Zen 4 the same ZMM loop is *slower* everywhere** (1 KB −34% to
+  256 KB −2%): AMD's 512-bit integer throughput is half-width plus
+  AVX-512 frequency downclocking. This confirms AVX-512 rolling checksums
+  stay off for AMD; an Intel-only ≥16 KB dispatch would be the only way to
+  use it, and is not currently implemented.
 
 **Observations**
 
 - **AVX-512 near-parity**: `MD5x16Core_Bulk` on Intel's full-width 512-bit
   units is 10.56 GB/s vs 11.24 GB/s on Zen 4 — the big Intel gap on AVX2
   integer SIMD nearly disappears on AVX-512.
-- **`SignatureParallel` 100 MB is *higher* on Intel** (61.7 vs 44.3 GB/s)
+- **`SignatureParallel` 100 MB is *higher* on Intel** (61.9 vs 44.3 GB/s)
   purely because it fans out to GOMAXPROCS (104 vs 32 threads) — not a
   single-core win, and not comparable to the AMD row.
 - Everything single-threaded is ~1.9–2.6× slower on Intel (2.5 GHz clock +
   narrower integer SIMD): signature hashing, Search, ApplyDelta, wire encode.
-- Raw output archived in [benchmarks-intel-full.md](benchmarks-intel-full.md).
+- Raw output (count=1 and count=3) archived in
+  [benchmarks-intel-full.md](benchmarks-intel-full.md).
 
 ### Reproducing this comparison
 
