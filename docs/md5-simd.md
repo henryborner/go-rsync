@@ -24,6 +24,7 @@ GenerateSignature(data, blockSize) → GenerateSignatureReader(io.Reader, ...)
 ├─ Checksum1 (weak) ──────────────────────────────────────────
 │   ├─ [amd64] AVX2 64B/iter  → rolling_amd64.s
 │   ├─ [amd64] SSE2 32B/iter  → rolling_sse2_amd64.s
+│   ├─ [amd64] AVX-512 64B/iter (opt-in only, Checksum1AVX512) → rolling_avx512_amd64.s
 │   └─ [!amd64] byte loop     → rolling_generic.go
 │
 └─ Strong hash (MD5) ─────────────────────────────────────────

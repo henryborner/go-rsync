@@ -26,8 +26,8 @@
 | Return format | `Checksum1` → packed `uint32`; `checksum1` → two `uint32` scalars |
 | s1 reduction | VPADDW 16-bit-lane accumulate (wraps mod 2^16) |
 | s2 weighted reduction | VPADDW 16-bit-lane accumulate (wraps mod 2^16) |
-| PREFETCHT0 | 384 bytes ahead |
-| Loop instructions | 16 |
+| PREFETCHT0 | 384 bytes ahead, **only for blocks ≥ 64 KB** (conditional prefetch, 2026-08-03) |
+| Loop instructions | 15 (no-prefetch) / 16 (prefetch, ≥ 64 KB) |
 
 > **Key technique (16-bit lanes, v7)**: All accumulators (running s1, Σs1_before, Σweighted) are kept in 16-bit lanes. `VPADDW` wraps mod 2^16 naturally — that wrap IS the truncation — so the four `VPMADDWD` pair-sum instructions (which existed only to pack 16-bit lanes into 32-bit) are eliminated: 19 → 16 instructions, 8 → 4 multiply-ops. Per-block lane values stay < 65536 (s1 lane ≤ 510; weighted lane ≤ 32,385 < 32767 no saturation; merged ≤ 48,450 < 65536 no wrap), so nothing wraps within a block; cross-block accumulation wraps = exact mod 2^16. Bit-identical to the old 32-bit version for the low 16 bits of s1/s2 (measured +31~37% on Zen 4).
 
@@ -68,7 +68,10 @@ lanes (wrap = exact mod 2^16).
 
 ## 3. Loop Structure
 
-16 instructions per iteration (was 19 — the four VPMADDWD are gone):
+The AVX2 loop exists as two bodies (conditional prefetch, 2026-08-03): 15
+instructions without prefetch (blocks < 64 KB) and 16 with. Shown below is the
+no-prefetch body; the ≥ 64 KB body adds one `PREFETCHT0 384(DI)` before the
+bottom-load. (v7 history: 19 → 16, the four VPMADDWD gone.)
 
 ```asm
 loop:
@@ -87,7 +90,7 @@ loop:
     VPADDW      Y3, Y2, Y2         ; merge halves → 16 int16 weighted
     VPADDW      Y2, Y12, Y12       ; Y12 += weighted (wraps mod 2^16)
 
-    PREFETCHT0  384(DI)            ; 6 cachelines ahead
+    ; (≥ 64 KB body only) PREFETCHT0 384(DI) ; 6 cachelines ahead
 
     ; bottom-load next block with OOB guard
     SUBQ  $1, SI
@@ -103,9 +106,12 @@ done:
 
 - **Interleaved VPMADDUBSW**: s1 issued first, s2 follows — avoids 4 instructions contending for ports 0 and 5 simultaneously.
 - **Bottom-load with guard**: `SUBQ/JZ` prevents overread on the last iteration.
-- **PREFETCHT0**: ~3% gain on Xeon cloud VMs; zero cost on Zen 4. (v3 in §5
-  also added the OOB guard, so its Ryzen 64KB dip cannot be blamed on the
-  PREFETCH alone — and both are early historical runs.)
+- **PREFETCHT0 (conditional, 2026-08-03)**: issued only for blocks ≥ 64 KB.
+  The 384 B-ahead prefetch runs past the buffer end; on Intel it measurably
+  hurt cache-resident sizes (a 4 KB dip; 2–32 KB up to −50%), while ≥ 64 KB
+  (data leaves the cache) genuinely benefits. On Zen 4 it was near-neutral
+  for all sizes. See §5 "Conditional prefetch". (The original v3 "~3% gain on
+  Xeon cloud VMs" was an early historical measurement on different hardware.)
 
 ## 4. Exit Reduction
 
@@ -401,7 +407,7 @@ VPADDW-wraps-mod-2^16 pattern as AVX2 (no VPMADDWD).
 | s1 reduction | VPADDW 16-bit accumulate | VPADDW 16-bit accumulate |
 | s2 reduction | VPADDW 16-bit accumulate | VPADDW 16-bit accumulate |
 | Block size | 64B/iter | 32B/iter |
-| Loop instructions | 16 | 16 |
+| Loop instructions | 15 / 16 (≥ 64 KB prefetch) | 15 / 16 (≥ 64 KB prefetch) |
 
 ## B. Per-Size Benchmarks
 

@@ -13,7 +13,7 @@ Built to power [Shuttle](https://github.com/henryborner/shuttle), my own Windows
 - **8-way AVX2 MD5** — 8 blocks hashed in parallel via AVX2 assembly (YMM), VPGATHERDD gather load + transpose.
 - **16-way AVX-512 MD5** — 16 blocks in parallel (ZMM), blockSize ≥ 2KB.
 - **8-way AVX2 SHA-256** — same SIMD approach as MD5, for integrity-critical workloads.
-- **3-tier checksum engine** — AVX2 (64B/iter) → SSE2 (32B/iter) → pure Go 128B batch. Auto-detects CPU at runtime.
+- **3-tier checksum engine** — AVX2 (64B/iter) → SSE2 (32B/iter) → pure Go 128B batch. Auto-detects CPU at runtime; opt-in AVX-512 (`Checksum1AVX512`).
 - **Pluggable strong hash** — md5, sha256, xxh64, xxh3-128 built-in. Register your own with `FastSum` support.
 - **Binary wire protocol** — compact big-endian encoding, ready for SSH pipes.
 - **Streaming I/O** — `GenerateSignatureReader`, `SearchReader`, stream decode — O(blockSize) memory for multi-GB files.
@@ -133,8 +133,11 @@ go test -bench='BenchmarkSignature$|BenchmarkSignatureXXH64$|BenchmarkSignatureX
 | `registry.go` | Pluggable strong-hash registry |
 | `api.go` | High-level convenience API: `Delta`, `ApplyDelta`, `RoundTrip`, `ApplyDeltaStream` |
 | `rolling.go` | Rolling checksum (`RollingSum`, `Checksum1`) |
-| `rolling_amd64.s` | AVX2 checksum assembly (64B/iter) + `checksum1PackedAVX2` |
-| `rolling_sse2_amd64.s` | SSE2/SSSE3 checksum assembly (32B/iter) |
+| `rolling_amd64.s` | AVX2 checksum assembly (64B/iter, conditional prefetch) + `checksum1PackedAVX2` |
+| `rolling_sse2_amd64.s` | SSE2/SSSE3 checksum assembly (32B/iter, conditional prefetch) |
+| `rolling_avx512_amd64.s` | AVX-512 single-ZMM checksum (64B/iter, opt-in) |
+| `rolling_avx512_decl.go` | Opt-in `Checksum1AVX512` with AVX-512 CPU guard |
+| `rolling_avx512_test.go` | AVX-512 parity test (skips without AVX-512) |
 | `rolling_fast_amd64.go` | Tiered dispatch: AVX2 → SSE2 → Go, inlined `Checksum1` |
 | `rolling_generic.go` | Portable byte-by-byte checksum (non-amd64 fallback) |
 | `rolling_fast_arm64.go` | ARM64 NEON tiered dispatch: UDOT (dotprod) → VUMULL → Go |
