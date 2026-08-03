@@ -1,0 +1,110 @@
+goos: linux
+goarch: amd64
+pkg: github.com/henryborner/go-rsync
+cpu: Intel(R) Xeon(R) Platinum 8269CY CPU @ 2.50GHz
+BenchmarkApplyDelta/Match90-104    	     757	   1618584 ns/op	 647.84 MB/s	 5415012 B/op	      14 allocs/op
+BenchmarkApplyDelta/Match90-104    	     787	   1572965 ns/op	 666.62 MB/s	 5415004 B/op	      14 allocs/op
+BenchmarkApplyDelta/Match90-104    	     698	   1669995 ns/op	 627.89 MB/s	 5415013 B/op	      14 allocs/op
+BenchmarkApplyDelta/AllLiteral-104 	     799	   1573428 ns/op	 666.43 MB/s	 5414987 B/op	      14 allocs/op
+BenchmarkApplyDelta/AllLiteral-104 	     742	   1547692 ns/op	 677.51 MB/s	 5414988 B/op	      14 allocs/op
+BenchmarkApplyDelta/AllLiteral-104 	     752	   1613207 ns/op	 649.99 MB/s	 5414980 B/op	      14 allocs/op
+BenchmarkRoundTrip-104             	     136	   8734593 ns/op	 120.05 MB/s	 6063880 B/op	      30 allocs/op
+BenchmarkRoundTrip-104             	     135	   8778261 ns/op	 119.45 MB/s	 6063877 B/op	      30 allocs/op
+BenchmarkRoundTrip-104             	     135	   8791502 ns/op	 119.27 MB/s	 6063881 B/op	      30 allocs/op
+BenchmarkWireSignature/Encode-104  	    8306	    134221 ns/op	 413.07 MB/s	  202976 B/op	    1511 allocs/op
+BenchmarkWireSignature/Encode-104  	    8727	    133250 ns/op	 416.08 MB/s	  202976 B/op	    1511 allocs/op
+BenchmarkWireSignature/Encode-104  	    9456	    134471 ns/op	 412.30 MB/s	  202976 B/op	    1511 allocs/op
+BenchmarkWireSignature/Decode-104  	    6063	    195486 ns/op	 283.61 MB/s	  162128 B/op	    4498 allocs/op
+BenchmarkWireSignature/Decode-104  	    6208	    195722 ns/op	 283.27 MB/s	  162128 B/op	    4498 allocs/op
+BenchmarkWireSignature/Decode-104  	    6255	    194408 ns/op	 285.18 MB/s	  162128 B/op	    4498 allocs/op
+BenchmarkWireInstructions/Encode-104         	    1554	    773454 ns/op	1355.92 MB/s	 2580776 B/op	      41 allocs/op
+BenchmarkWireInstructions/Encode-104         	    1488	    767330 ns/op	1366.74 MB/s	 2580775 B/op	      41 allocs/op
+BenchmarkWireInstructions/Encode-104         	    1574	    771101 ns/op	1360.06 MB/s	 2580776 B/op	      41 allocs/op
+BenchmarkWireInstructions/Decode-104         	    3084	    367030 ns/op	2857.37 MB/s	 1050680 B/op	      99 allocs/op
+BenchmarkWireInstructions/Decode-104         	    3177	    368186 ns/op	2848.40 MB/s	 1050681 B/op	      99 allocs/op
+BenchmarkWireInstructions/Decode-104         	    3502	    365052 ns/op	2872.85 MB/s	 1050680 B/op	      99 allocs/op
+BenchmarkSignature-104                       	    1818	    647830 ns/op	  120928 B/op	       5 allocs/op
+BenchmarkSignature-104                       	    1816	    647051 ns/op	  120928 B/op	       5 allocs/op
+BenchmarkSignature-104                       	    1837	    646226 ns/op	  120928 B/op	       5 allocs/op
+BenchmarkSignatureSHA256-104                 	     391	   3052488 ns/op	  145504 B/op	       5 allocs/op
+BenchmarkSignatureSHA256-104                 	     392	   3054524 ns/op	  145504 B/op	       5 allocs/op
+BenchmarkSignatureSHA256-104                 	     391	   3047134 ns/op	  145504 B/op	       5 allocs/op
+BenchmarkSignatureXXH64-104                  	    3956	    305865 ns/op	  103200 B/op	       5 allocs/op
+BenchmarkSignatureXXH64-104                  	    4003	    306569 ns/op	  103200 B/op	       5 allocs/op
+BenchmarkSignatureXXH64-104                  	    3876	    306967 ns/op	  103200 B/op	       5 allocs/op
+BenchmarkSignatureXXH3-104                   	    4838	    253002 ns/op	  115488 B/op	       5 allocs/op
+BenchmarkSignatureXXH3-104                   	    4549	    252876 ns/op	  115488 B/op	       5 allocs/op
+BenchmarkSignatureXXH3-104                   	    4785	    254361 ns/op	  115488 B/op	       5 allocs/op
+BenchmarkSignatureReader/10MB_700B-104       	     188	   6338866 ns/op	1654.20 MB/s	 1095776 B/op	       5 allocs/op
+BenchmarkSignatureReader/10MB_700B-104       	     189	   6282478 ns/op	1669.05 MB/s	 1095777 B/op	       5 allocs/op
+BenchmarkSignatureReader/10MB_700B-104       	     189	   6285396 ns/op	1668.27 MB/s	 1095777 B/op	       5 allocs/op
+BenchmarkSignatureReader/10MB_32KB-104       	     321	   3644889 ns/op	2876.84 MB/s	  548192 B/op	       5 allocs/op
+BenchmarkSignatureReader/10MB_32KB-104       	     336	   3529188 ns/op	2971.15 MB/s	  548192 B/op	       5 allocs/op
+BenchmarkSignatureReader/10MB_32KB-104       	     338	   3538424 ns/op	2963.40 MB/s	  548192 B/op	       5 allocs/op
+BenchmarkSignatureReader/10MB_128KB-104      	     274	   4313154 ns/op	2431.11 MB/s	 2103393 B/op	       5 allocs/op
+BenchmarkSignatureReader/10MB_128KB-104      	     278	   4282722 ns/op	2448.39 MB/s	 2103393 B/op	       5 allocs/op
+BenchmarkSignatureReader/10MB_128KB-104      	     278	   4248331 ns/op	2468.21 MB/s	 2103392 B/op	       5 allocs/op
+BenchmarkSignatureReader/100MB_700B-104      	      16	  69715007 ns/op	1504.09 MB/s	10803296 B/op	       5 allocs/op
+BenchmarkSignatureReader/100MB_700B-104      	      16	  68547188 ns/op	1529.71 MB/s	10803296 B/op	       5 allocs/op
+BenchmarkSignatureReader/100MB_700B-104      	      15	  72966883 ns/op	1437.06 MB/s	10803296 B/op	       5 allocs/op
+BenchmarkSignatureReader/100MB_128KB-104     	      26	  44682471 ns/op	2346.73 MB/s	 2159968 B/op	       5 allocs/op
+BenchmarkSignatureReader/100MB_128KB-104     	      26	  44441303 ns/op	2359.46 MB/s	 2159968 B/op	       5 allocs/op
+BenchmarkSignatureReader/100MB_128KB-104     	      25	  47287500 ns/op	2217.45 MB/s	 2159968 B/op	       5 allocs/op
+BenchmarkSearch-104                          	     186	   6418692 ns/op	  527968 B/op	      11 allocs/op
+BenchmarkSearch-104                          	     187	   6407073 ns/op	  527968 B/op	      11 allocs/op
+BenchmarkSearch-104                          	     186	   6407929 ns/op	  527968 B/op	      11 allocs/op
+BenchmarkSearchMiss-104                      	     186	   6401445 ns/op	  527968 B/op	      11 allocs/op
+BenchmarkSearchMiss-104                      	     187	   6392258 ns/op	  527968 B/op	      11 allocs/op
+BenchmarkSearchMiss-104                      	     188	   6371338 ns/op	  527968 B/op	      11 allocs/op
+BenchmarkRollValue/RollOnly-104              	425779834	         2.822 ns/op	       0 B/op	       0 allocs/op
+BenchmarkRollValue/RollOnly-104              	422117284	         2.835 ns/op	       0 B/op	       0 allocs/op
+BenchmarkRollValue/RollOnly-104              	423466878	         2.832 ns/op	       0 B/op	       0 allocs/op
+BenchmarkRollValue/RollAndValue-104          	378119283	         3.173 ns/op	       0 B/op	       0 allocs/op
+BenchmarkRollValue/RollAndValue-104          	379649193	         3.160 ns/op	       0 B/op	       0 allocs/op
+BenchmarkRollValue/RollAndValue-104          	379001898	         3.162 ns/op	       0 B/op	       0 allocs/op
+BenchmarkChecksum1/1KB-104                   	38182056	        31.39 ns/op	32620.78 MB/s	       0 B/op	       0 allocs/op
+BenchmarkChecksum1/1KB-104                   	36162585	        33.14 ns/op	30898.37 MB/s	       0 B/op	       0 allocs/op
+BenchmarkChecksum1/1KB-104                   	36895722	        31.53 ns/op	32474.66 MB/s	       0 B/op	       0 allocs/op
+BenchmarkChecksum1/8KB-104                   	 6696951	       179.5 ns/op	45641.21 MB/s	       0 B/op	       0 allocs/op
+BenchmarkChecksum1/8KB-104                   	 6924631	       173.2 ns/op	47288.61 MB/s	       0 B/op	       0 allocs/op
+BenchmarkChecksum1/8KB-104                   	 6675544	       179.8 ns/op	45572.53 MB/s	       0 B/op	       0 allocs/op
+BenchmarkChecksum1/64KB-104                  	  857682	      1386 ns/op	47281.50 MB/s	       0 B/op	       0 allocs/op
+BenchmarkChecksum1/64KB-104                  	  861696	      1389 ns/op	47173.12 MB/s	       0 B/op	       0 allocs/op
+BenchmarkChecksum1/64KB-104                  	  857258	      1390 ns/op	47145.15 MB/s	       0 B/op	       0 allocs/op
+BenchmarkChecksum1/1024KB-104                	   46854	     25612 ns/op	40941.47 MB/s	       0 B/op	       0 allocs/op
+BenchmarkChecksum1/1024KB-104                	   44364	     27001 ns/op	38834.13 MB/s	       0 B/op	       0 allocs/op
+BenchmarkChecksum1/1024KB-104                	   48506	     24728 ns/op	42404.16 MB/s	       0 B/op	       0 allocs/op
+BenchmarkSearchReader-104                    	     146	   8121634 ns/op	  655682 B/op	       7 allocs/op
+BenchmarkSearchReader-104                    	     145	   8166269 ns/op	  655680 B/op	       7 allocs/op
+BenchmarkSearchReader-104                    	     147	   8104595 ns/op	  655680 B/op	       7 allocs/op
+BenchmarkSearchParallel/workers=1-104        	     186	   6427168 ns/op	  527968 B/op	      11 allocs/op
+BenchmarkSearchParallel/workers=1-104        	     186	   6403340 ns/op	  527968 B/op	      11 allocs/op
+BenchmarkSearchParallel/workers=1-104        	     187	   6376341 ns/op	  527968 B/op	      11 allocs/op
+BenchmarkSearchParallel/workers=2-104        	     283	   4179452 ns/op	  533826 B/op	      39 allocs/op
+BenchmarkSearchParallel/workers=2-104        	     280	   4187789 ns/op	  533846 B/op	      39 allocs/op
+BenchmarkSearchParallel/workers=2-104        	     297	   4108354 ns/op	  533838 B/op	      39 allocs/op
+BenchmarkSearchParallel/workers=4-104        	     466	   2613874 ns/op	  539568 B/op	      68 allocs/op
+BenchmarkSearchParallel/workers=4-104        	     453	   2634175 ns/op	  539469 B/op	      68 allocs/op
+BenchmarkSearchParallel/workers=4-104        	     460	   2557972 ns/op	  539456 B/op	      68 allocs/op
+BenchmarkSearchParallel/workers=8-104        	     706	   1577670 ns/op	  541165 B/op	     112 allocs/op
+BenchmarkSearchParallel/workers=8-104        	     798	   1555799 ns/op	  541048 B/op	     112 allocs/op
+BenchmarkSearchParallel/workers=8-104        	     778	   1602117 ns/op	  540979 B/op	     112 allocs/op
+BenchmarkMD5x8_Bulk-104                      	   92931	     12886 ns/op	2542.89 MB/s	       0 B/op	       0 allocs/op
+BenchmarkMD5x8_Bulk-104                      	   93435	     12842 ns/op	2551.58 MB/s	       0 B/op	       0 allocs/op
+BenchmarkMD5x8_Bulk-104                      	   92974	     12905 ns/op	2539.19 MB/s	       0 B/op	       0 allocs/op
+BenchmarkMD5x8Core_Bulk-104                  	    9133	    131564 ns/op	3891.65 MB/s	       0 B/op	       0 allocs/op
+BenchmarkMD5x8Core_Bulk-104                  	    9061	    131584 ns/op	3891.06 MB/s	       0 B/op	       0 allocs/op
+BenchmarkMD5x8Core_Bulk-104                  	    9080	    131585 ns/op	3891.01 MB/s	       0 B/op	       0 allocs/op
+BenchmarkMD5x16Core_Bulk-104                 	   12390	     96848 ns/op	10573.26 MB/s	       0 B/op	       0 allocs/op
+BenchmarkMD5x16Core_Bulk-104                 	   12392	     96830 ns/op	10575.25 MB/s	       0 B/op	       0 allocs/op
+BenchmarkMD5x16Core_Bulk-104                 	   12393	     96817 ns/op	10576.64 MB/s	       0 B/op	       0 allocs/op
+BenchmarkSignatureParallel/1MB-104           	    5277	    212647 ns/op	4931.05 MB/s	  132477 B/op	     204 allocs/op
+BenchmarkSignatureParallel/1MB-104           	    5482	    215548 ns/op	4864.69 MB/s	  132361 B/op	     204 allocs/op
+BenchmarkSignatureParallel/1MB-104           	    5595	    217004 ns/op	4832.07 MB/s	  132355 B/op	     204 allocs/op
+BenchmarkSignatureParallel/10MB-104          	    2137	    545573 ns/op	19219.71 MB/s	  747918 B/op	     212 allocs/op
+BenchmarkSignatureParallel/10MB-104          	    2158	    558750 ns/op	18766.46 MB/s	  747468 B/op	     212 allocs/op
+BenchmarkSignatureParallel/10MB-104          	    2156	    555754 ns/op	18867.62 MB/s	  747477 B/op	     212 allocs/op
+BenchmarkSignatureParallel/100MB-104         	     752	   1680369 ns/op	62401.53 MB/s	  747819 B/op	     212 allocs/op
+BenchmarkSignatureParallel/100MB-104         	     742	   1705145 ns/op	61494.81 MB/s	  747496 B/op	     212 allocs/op
+BenchmarkSignatureParallel/100MB-104         	     739	   1708412 ns/op	61377.22 MB/s	  747456 B/op	     212 allocs/op
+PASS

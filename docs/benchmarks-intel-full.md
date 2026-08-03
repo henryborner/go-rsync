@@ -6,6 +6,8 @@ conditional prefetch, main @ 59ccff3). A second instance was measured to
 confirm the first one (116.62.156.48, since released); both matched within
 ±2% (session noise) — the numbers below are the newer instance.
 
+Raw count=3 output: [`raw/bench-intel-count3-new.txt`](raw/bench-intel-count3-new.txt).
+
 Server: Intel Xeon Platinum 8269CY @2.5 GHz base / ~2.9 GHz sustained,
 2 sockets × 26 cores (104 threads), Cascade Lake-SP, Ubuntu 26.04, Go 1.26.5.
 
