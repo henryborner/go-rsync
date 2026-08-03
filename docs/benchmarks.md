@@ -51,10 +51,10 @@
 
 | Algorithm | Throughput |
 |-----------|:----------:|
-| md5 (AVX2 8-way) | 1.63 GB/s |
+| md5 (AVX2 8-way) | 1.62 GB/s |
 | sha256 (SHA-NI) | 0.34 GB/s |
 | xxh64 | 3.42 GB/s |
-| xxh3 | 4.16 GB/s |
+| xxh3 | 4.15 GB/s |
 
 ## GenerateSignatureParallel (md5)
 
@@ -74,9 +74,9 @@ block size. Note `SignatureParallel` uses GOMAXPROCS workers, so the Intel
 
 | Data | Throughput |
 |------|:----------:|
-| 1 MB | 4.89 GB/s |
-| 10 MB | 19.5 GB/s |
-| 100 MB | 61.9 GB/s |
+| 1 MB | 4.87 GB/s |
+| 10 MB | 18.9 GB/s |
+| 100 MB | 61.5 GB/s |
 
 The 100 MB reading (61.9 GB/s) is *higher* than AMD's 44.3 GB/s purely
 because it fans out to 104 threads vs AMD's 32 — not a single-core win.
@@ -99,11 +99,11 @@ md5 dispatch: blockSize ≥ 2 KB → AVX-512 16-way, otherwise AVX2 8-way.
 
 | Config | Throughput |
 |--------|:----------:|
-| 10MB_700B | 1666 MB/s |
-| 10MB_32KB | 2916 MB/s |
-| 10MB_128KB | 2431 MB/s |
-| 100MB_700B | 1481 MB/s |
-| 100MB_128KB | 2332 MB/s |
+| 10MB_700B | 1668 MB/s |
+| 10MB_32KB | 2963 MB/s |
+| 10MB_128KB | 2448 MB/s |
+| 100MB_700B | 1504 MB/s |
+| 100MB_128KB | 2347 MB/s |
 
 ## Search / delta matching (md5)
 
@@ -142,13 +142,13 @@ md5 dispatch: blockSize ≥ 2 KB → AVX-512 16-way, otherwise AVX2 8-way.
 
 | Benchmark | Time |
 |-----------|:-----:|
-| `Search` (90% match) | 6.46 ms |
-| `SearchMiss` | 6.38 ms |
+| `Search` (90% match) | 6.41 ms |
+| `SearchMiss` | 6.39 ms |
 | `SearchReader` | 8.12 ms |
-| `SearchParallel` 1w | 6.39 ms |
-| `SearchParallel` 2w | 4.05 ms |
-| `SearchParallel` 4w | 2.51 ms |
-| `SearchParallel` 8w | 1.60 ms |
+| `SearchParallel` 1w | 6.40 ms |
+| `SearchParallel` 2w | 4.18 ms |
+| `SearchParallel` 4w | 2.61 ms |
+| `SearchParallel` 8w | 1.58 ms |
 
 ## Delta pipeline (reconstruct / roundtrip)
 
@@ -164,9 +164,9 @@ md5 dispatch: blockSize ≥ 2 KB → AVX-512 16-way, otherwise AVX2 8-way.
 
 | Benchmark | Throughput |
 |-----------|:----------:|
-| `ApplyDelta` Match90 | 679 MB/s |
-| `ApplyDelta` AllLiteral | 703 MB/s |
-| `RoundTrip` | 121 MB/s |
+| `ApplyDelta` Match90 | 648 MB/s |
+| `ApplyDelta` AllLiteral | 666 MB/s |
+| `RoundTrip` | 119 MB/s |
 
 ## RollingSum hot path (Roll + Value)
 
@@ -223,10 +223,10 @@ cache-resident sizes on Intel. Pre-v7: 64.2 / 79.0 / 80.2 / 80.4 GB/s.)
 
 | Size | Throughput |
 |------|:----------:|
-| 1 KB | 30.8 GB/s |
-| 8 KB | 46.7 GB/s |
-| 64 KB | 48.3 GB/s |
-| 1 MB | 41.0 GB/s |
+| 1 KB | 32.5 GB/s |
+| 8 KB | 45.6 GB/s |
+| 64 KB | 47.2 GB/s |
+| 1 MB | 40.9 GB/s |
 
 ### AVX-512 rolling checksum experiment (Intel, csumdiag harness)
 
@@ -236,14 +236,14 @@ harness on the Intel machine vs the AVX2 path:
 
 | Block | AVX2 GB/s | AVX-512 GB/s |
 |-------|:---------:|:------------:|
-| 1 KB | 30.6 | 22.1 |
-| 8 KB | 46.8 | 46.3 |
-| 16 KB | 49.6 | 53.6 |
-| 32 KB | 48.9 | 55.6 |
-| 64 KB | 47.3 | 58.7 |
-| 128 KB | 48.3 | 60.8 |
-| 256 KB | 48.8 | 61.8 |
-| 1 MB | 39.1 | 38.2 |
+| 1 KB | 30.6 | 21.7 |
+| 8 KB | 47.5 | 46.8 |
+| 16 KB | 50.1 | 54.0 |
+| 32 KB | 48.9 | 56.0 |
+| 64 KB | 47.3 | 58.9 |
+| 128 KB | 48.3 | 61.0 |
+| 256 KB | 48.8 | 62.0 |
+| 1 MB | 40.5 | 43.9 |
 
 - **On Intel, AVX-512 wins from 16 KB up (+8–27%, peak +27% at 256 KB)** —
   Cascade Lake's full-width 512-bit integer SIMD (ZMM at the same throughput
@@ -274,9 +274,9 @@ harness on the Intel machine vs the AVX2 path:
 
 | Benchmark | Throughput |
 |-----------|:----------:|
-| `MD5x8_Bulk` (AVX2) | 2541 MB/s |
-| `MD5x8Core_Bulk` (AVX2 raw) | 3890 MB/s |
-| `MD5x16Core_Bulk` (AVX-512 raw) | 10557 MB/s |
+| `MD5x8_Bulk` (AVX2) | 2543 MB/s |
+| `MD5x8Core_Bulk` (AVX2 raw) | 3891 MB/s |
+| `MD5x16Core_Bulk` (AVX-512 raw) | 10575 MB/s |
 
 **AVX-512 near-parity**: `MD5x16Core_Bulk` on Intel's full-width 512-bit
 units is 10.56 GB/s vs 11.24 GB/s on Zen 4 — the big Intel gap on AVX2
@@ -332,45 +332,45 @@ cross-checked with `go test -bench`.
 
 ### Intel Xeon 8269CY (deterministic data, reference only)
 
-> Same tooling and methodology as the AMD rows; re-measured after the
-> conditional-prefetch change. **Reference only** (rented server).
+> Same tooling and methodology as the AMD rows; measured on a fresh
+> ebmc6.26xlarge instance (2026-08-03). **Reference only** (rented server).
 
 | Block size | go-rsync GB/s | rsync AVX2 GB/s |
 |-----------|--------------|-----------------|
-| 1 KB | 33.5 | 23.6 |
-| 2 KB | 41.1 | 20.9 |
-| 4 KB | 46.1 | 33.1 |
-| 8 KB | 47.7 | 33.9 |
-| 16 KB | 50.2 | 35.3 |
-| 32 KB | 49.8 | 35.9 |
+| 1 KB | 31.6 | 21.1 |
+| 2 KB | 36.4 | 20.4 |
+| 4 KB | 45.6 | 32.2 |
+| 8 KB | 47.5 | 33.8 |
+| 16 KB | 50.0 | 35.3 |
+| 32 KB | 49.0 | 35.9 |
 | 64 KB | 47.3 | 36.4 |
-| 128 KB | 48.3 | 35.3 |
-| 256 KB | 48.8 | 35.4 |
-| 1 MB | 39.1 | 31.8 |
+| 128 KB | 48.3 | 35.6 |
+| 256 KB | 48.8 | 35.7 |
+| 1 MB | 42.6 | 32.8 |
 
 ### Intel Xeon 8269CY (random data, reference only)
 
 | Block size | go-rsync GB/s | rsync AVX2 GB/s |
 |-----------|--------------|-----------------|
-| 1 KB | 32.1 | 23.6 |
-| 2 KB | 40.0 | 20.4 |
-| 4 KB | 45.6 | 32.2 |
-| 8 KB | 47.7 | 33.8 |
-| 16 KB | 50.2 | 35.3 |
-| 32 KB | 50.1 | 35.9 |
-| 64 KB | 47.4 | 36.4 |
+| 1 KB | 31.5 | 24.7 |
+| 2 KB | 39.8 | 20.8 |
+| 4 KB | 45.3 | 32.2 |
+| 8 KB | 47.5 | 33.8 |
+| 16 KB | 50.0 | 35.3 |
+| 32 KB | 48.8 | 35.9 |
+| 64 KB | 47.3 | 36.4 |
 | 128 KB | 48.3 | 35.3 |
 | 256 KB | 48.8 | 35.4 |
-| 1 MB | 39.8 | 31.8 |
+| 1 MB | 38.3 | 33.2 |
 
 ### Observations (Intel vs AMD)
 
-- **Absolute throughput is ~40% of the AMD machine** (go-rsync peak 50.2 vs
+- **Absolute throughput is ~40% of the AMD machine** (go-rsync peak 50.0 vs
   112.9 GB/s; rsync 36.4 vs 81.8): 2.5–3.8 GHz vs 4.5–5.2 GHz clock, plus
   lower per-cycle AVX2 integer-SIMD throughput on Intel (Cascade Lake
   VPMADDUBSW 256-bit is ~1/cycle vs 2/cycle on Zen 4).
 - **go-rsync still leads, but by less than on AMD**: ~30–42% at 8 KB+
-  (1 MB drops to +23%, memory-bandwidth bound) vs ~35–51% on AMD. With
+  (1 MB ~15–30%, memory-bandwidth bound) vs ~35–51% on AMD. With
   4 VPMADDUBSW per iteration saturating Intel's narrower SIMD throughput,
   both sides hit the same throughput wall, which compresses go-rsync's
   dependency-chain advantage (the 16-bit-lane no-fold trick pays off more

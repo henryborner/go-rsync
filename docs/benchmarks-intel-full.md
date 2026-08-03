@@ -114,3 +114,34 @@ bit-identical). csumdiag time-boxed comparison, AVX2 vs AVX512 (mode 0 vs 4):
 Conclusion: on Intel (Cascade Lake full-width 512-bit units) ZMM wins +8–27%
 from 16 KB up; on Zen 4 ZMM loses everywhere (−2 to −34%). AVX-512 rolling
 checksum stays off for AMD; Intel-only ≥16 KB dispatch not implemented.
+
+---
+
+## Second instance re-measurement (2026-08-03, 120.26.249.55)
+
+A fresh ebmc6.26xlarge instance was measured to confirm the first one
+(116.62.156.48, since released). Results match within ±2% (session noise) —
+same hardware, same ~2.9 GHz clock reality.
+
+### vs-rsync (csumdiag, alternating, mode 0 / mode 1)
+
+go-rsync peak 50.0 GB/s (16 KB); 4 KB dip gone (45.6). rsync peak 36.4.
+Leading margin ~30–42% at 8 KB+ (1 MB 15–30%).
+
+### Full suite (count=3 medians)
+
+- Signature md5 1.62 / sha256 0.34 / xxh64 3.42 / xxh3 4.15 GB/s
+- SignatureParallel 4.87 / 18.9 / 61.5 GB/s (1/10/100 MB)
+- SignatureReader 1668 / 2963 / 2448 / 1504 / 2347 MB/s
+- Search 6.41 / SearchMiss 6.39 / SearchReader 8.12 ms
+- SearchParallel 6.40 / 4.18 / 2.61 / 1.58 ms
+- ApplyDelta 648 / 666 MB/s, RoundTrip 119 MB/s
+- WireSignature 413 / 284 MB/s, WireInstructions 1360 / 2857 MB/s
+- RollOnly 2.83 / RollAndValue 3.16 ns
+- Checksum1 32.5 / 45.6 / 47.2 / 40.9 GB/s (1KB/8KB/64KB/1MB)
+- MD5x8_Bulk 2543 / MD5x8Core_Bulk 3891 / MD5x16Core_Bulk 10575 MB/s
+
+### AVX-512 opt-in (csumdiag mode 0 vs 4, same instance)
+
+16 KB 50.1→54.0 (+8%), 64 KB 47.3→58.9 (+25%), 256 KB 48.8→62.0 (+27%),
+1 MB 40.5→43.9 (+8%, this session). Reproduces the first instance.
