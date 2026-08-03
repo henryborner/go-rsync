@@ -24,7 +24,7 @@
 |---|---|
 | Aliyun spec | ecs.ebmc6.26xlarge (ebmc6 compute bare-metal, 104 vCPU / 192 GiB) |
 | CPU | Intel Xeon Platinum 8269CY (Cascade Lake, 2 sockets × 26 cores / 104 threads) |
-| L3 cache | 71.5 MiB per socket (2 sockets = 143 MiB total, `lscpu` measured) |
+| L3 cache | 35.75 MiB per socket (2 sockets = 71.5 MiB total; `lscpu -C` ONE-SIZE=35.8M/ALL-SIZE=71.5M, sysfs index3=36608K) |
 | OS / Go | Ubuntu 26.04 / go1.26.5 |
 
 ## GenerateSignature (1 MB data, single-threaded, blockSize=700)
