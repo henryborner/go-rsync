@@ -5,8 +5,8 @@
 >
 > - **AMD Ryzen 9 8940HX (Zen 4)** — the local dev machine (primary).
 > - **Intel Xeon 8269CY (Cascade Lake)** — rented Aliyun bare-metal,
->   **reference only**: CPU frequency / Turbo / virtualization conditions are
->   not under our control and results may drift between sessions.
+>   **reference only**: no virtualization, but CPU frequency / Turbo may be
+>   constrained by the cloud provider and results may drift between sessions.
 
 ## Hardware
 
@@ -23,7 +23,7 @@
 | | |
 |---|---|
 | CPU | Intel Xeon Platinum 8269CY (Cascade Lake, 2 sockets × 26 cores / 104 threads) |
-| L3 cache | 71.5 MiB × 2 (full) |
+| L3 cache | 71.5 MiB per socket (2 sockets = 143 MiB total) |
 | OS / Go | Ubuntu 26.04 / go1.26.5 |
 
 ## GenerateSignature (1 MB data, single-threaded, blockSize=700)
