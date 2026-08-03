@@ -108,7 +108,9 @@ Windows 11, Go 1.26.5 — the same machine used for the full tables in
 > 512-bit integer units) for blocks ≥ 16 KB (up to +27% at 256 KB); on AMD
 > Zen 4 it is slower, and on CPUs without AVX-512 it falls back to
 > `Checksum1`. The default `Checksum1` is unchanged (auto AVX2 → SSE2 → Go).
-> See [docs/benchmarks.md](docs/benchmarks.md) → "AVX-512 rolling checksum
+> **Not guaranteed on all Intel CPUs** — only measured on one Cascade Lake
+> Xeon; benchmark on your own hardware before enabling. See
+> [docs/benchmarks.md](docs/benchmarks.md) → "AVX-512 rolling checksum
 > experiment".
 
 > Per-size curves, allocation counts (B/op, allocs/op), the streaming

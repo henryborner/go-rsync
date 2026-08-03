@@ -19,6 +19,9 @@ func checksum1AVX512(data []byte, s1, s2 *uint32) bool
 // on AMD Zen 4 it is slower, and on CPUs without AVX-512 it would crash.
 // See docs/benchmarks.md → "AVX-512 rolling checksum experiment".
 //
+// ⚠️ Not guaranteed faster on all Intel CPUs — measured on one Cascade Lake
+// Xeon only; benchmark on your own hardware before enabling.
+//
 // Falls back to Checksum1 when the CPU lacks AVX-512 or the asm refuses.
 func Checksum1AVX512(data []byte) uint32 {
 	n := len(data)

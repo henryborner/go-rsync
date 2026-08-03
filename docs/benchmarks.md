@@ -337,6 +337,11 @@ harness on this machine vs the AVX2 path:
   AVX-512 frequency downclocking. This confirms AVX-512 rolling checksums
   stay off for AMD; an Intel-only ≥16 KB dispatch would be the only way to
   use it, and is not currently implemented.
+- **⚠️ Not guaranteed on all Intel CPUs**: only measured on this one
+  Cascade Lake Xeon (8269CY). Server Xeons (Skylake-X … Sapphire Rapids)
+  share the 2×512-bit FMA design and should behave similarly, but client
+  parts differ (10th/11th gen downclocks, 12th gen+ has no AVX-512 at all).
+  Benchmark on your own hardware before enabling `Checksum1AVX512`.
 
 **Observations**
 
