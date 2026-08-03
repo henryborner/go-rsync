@@ -78,7 +78,7 @@ block size. Note `SignatureParallel` uses GOMAXPROCS workers, so the Intel
 | 10 MB | 18.9 GB/s |
 | 100 MB | 61.5 GB/s |
 
-The 100 MB reading (61.9 GB/s) is *higher* than AMD's 44.3 GB/s purely
+The 100 MB reading (61.5 GB/s) is *higher* than AMD's 44.3 GB/s purely
 because it fans out to 104 threads vs AMD's 32 — not a single-core win.
 
 ## SignatureReader (streaming, md5)
@@ -279,7 +279,7 @@ harness on the Intel machine vs the AVX2 path:
 | `MD5x16Core_Bulk` (AVX-512 raw) | 10575 MB/s |
 
 **AVX-512 near-parity**: `MD5x16Core_Bulk` on Intel's full-width 512-bit
-units is 10.56 GB/s vs 11.24 GB/s on Zen 4 — the big Intel gap on AVX2
+units is 10.58 GB/s vs 11.24 GB/s on Zen 4 — the big Intel gap on AVX2
 integer SIMD nearly disappears on AVX-512.
 
 ## Rolling checksum vs rsync (AVX2, WSL2 Linux)
@@ -388,7 +388,7 @@ cross-checked with `go test -bench`.
   narrower integer SIMD): signature hashing, Search, ApplyDelta, wire encode.
 - `SignatureParallel` and `SearchParallel` scale with GOMAXPROCS — Intel's
   104-thread numbers are not comparable to AMD's 32-thread ones.
-- Raw Intel output (count=1 and count=3) archived in
+- Raw Intel count=3 medians (newest ebmc6.26xlarge instance) archived in
   [benchmarks-intel-full.md](benchmarks-intel-full.md).
 
 ## Reproducing the vs-rsync comparison
