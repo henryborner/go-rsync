@@ -843,6 +843,30 @@ func BenchmarkSearchReader(b *testing.B) {
 	}
 }
 
+func BenchmarkSearchReaderParallel(b *testing.B) {
+	const size = 32 << 20
+	basis := make([]byte, size)
+	rand.Read(basis)
+	newFile := make([]byte, size)
+	rand.Read(newFile) // unrelated → all-miss
+	blockSize := CalculateBlockSize(size)
+	sig := GenerateSignature(basis, blockSize, "md5")
+
+	for _, window := range []int{8 << 20, 32 << 20} {
+		b.Run(fmt.Sprintf("32MB_window%dMB", window>>20), func(b *testing.B) {
+			b.SetBytes(size)
+			b.ReportAllocs()
+			for b.Loop() {
+				eng, _ := NewMatchEngine(blockSize, "md5")
+				eng.LoadSignature(sig)
+				eng.SearchReaderParallel(bytes.NewReader(newFile), size, window, 0, func(MatchResult) error {
+					return nil
+				})
+			}
+		})
+	}
+}
+
 // ── Parallel Search tests ──────────────────────────────────────────────
 
 func TestSearchParallelParity(t *testing.T) {
@@ -940,6 +964,103 @@ func TestSearchParallelBoundaryCrossingMatch(t *testing.T) {
 			t.Fatalf("workers=%d: parallel reconstruction mismatch (len=%d want=%d)",
 				workers, len(out2), len(newFile))
 		}
+	}
+}
+
+func TestSearchReaderParallelParity(t *testing.T) {
+	sizes := []int{1<<20 + 123, 2<<20 + 4567}
+	windows := []int{1 << 17, 333331}
+	for _, sz := range sizes {
+		basis := make([]byte, sz)
+		rand.Read(basis)
+		newFile := make([]byte, sz)
+		copy(newFile, basis)
+		// Modify a few regions so the delta is non-trivial.
+		for i := 0; i < sz/7; i++ {
+			newFile[i*7] ^= 0xFF
+		}
+		blockSize := CalculateBlockSize(int64(sz))
+		sig := GenerateSignature(basis, blockSize, "md5")
+
+		// Serial baseline.
+		eng1, _ := NewMatchEngine(blockSize, "md5")
+		eng1.LoadSignature(sig)
+		serial := eng1.Search(newFile)
+		recon1, _ := NewReconstructor(basis, blockSize, "md5")
+		out1, err := recon1.Reconstruct(serial)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		for _, window := range windows {
+			eng2, _ := NewMatchEngine(blockSize, "md5")
+			eng2.LoadSignature(sig)
+			var parallel []MatchResult
+			err := eng2.SearchReaderParallel(bytes.NewReader(newFile), int64(sz), window, 0, func(mr MatchResult) error {
+				cp := mr
+				if mr.IsLiteral {
+					cp.Data = append([]byte(nil), mr.Data...)
+				}
+				parallel = append(parallel, cp)
+				return nil
+			})
+			if err != nil {
+				t.Fatalf("size=%d window=%d: SearchReaderParallel: %v", sz, window, err)
+			}
+
+			recon2, _ := NewReconstructor(basis, blockSize, "md5")
+			out2, err := recon2.Reconstruct(parallel)
+			if err != nil {
+				t.Fatalf("size=%d window=%d: reconstruct: %v", sz, window, err)
+			}
+			if !bytes.Equal(out2, out1) {
+				t.Fatalf("size=%d window=%d: parallel streaming output differs from serial (len=%d want=%d)",
+					sz, window, len(out2), len(out1))
+			}
+			if !bytes.Equal(out2, newFile) {
+				t.Fatalf("size=%d window=%d: parallel streaming output != newFile", sz, window)
+			}
+		}
+	}
+}
+
+// TestSearchReaderParallelWindowBoundary covers a match phase that would
+// cross a streaming window boundary; the two windows must still reconstruct
+// byte-for-byte without duplicating the covered range.
+func TestSearchReaderParallelWindowBoundary(t *testing.T) {
+	const size = 2 << 20
+	basis := make([]byte, size)
+	rand.Read(basis)
+	blockSize := CalculateBlockSize(size)
+	sig := GenerateSignature(basis, blockSize, "md5")
+
+	const window = 137777 // deliberately not block-aligned
+	first := window - int(blockSize)/2
+	newFile := make([]byte, size)
+	rand.Read(newFile[:first])
+	copy(newFile[first:], basis[:size-first])
+
+	eng, _ := NewMatchEngine(blockSize, "md5")
+	eng.LoadSignature(sig)
+	var results []MatchResult
+	err := eng.SearchReaderParallel(bytes.NewReader(newFile), size, window, 0, func(mr MatchResult) error {
+		cp := mr
+		if mr.IsLiteral {
+			cp.Data = append([]byte(nil), mr.Data...)
+		}
+		results = append(results, cp)
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	recon, _ := NewReconstructor(basis, blockSize, "md5")
+	out, err := recon.Reconstruct(results)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(out, newFile) {
+		t.Fatalf("window-boundary reconstruction mismatch (len=%d want=%d)", len(out), len(newFile))
 	}
 }
 

@@ -838,11 +838,12 @@ func (me *MatchEngine) SearchParallel(data []byte, numWorkers int) []MatchResult
 	for i := 0; i < numWorkers; i++ {
 		sr := <-ch
 		segResults[sr.segID] = sr.results
-		// Aggregate stats (single goroutine, no race).
+		// Aggregate diagnostic counters (single goroutine, no race).
+		// Matches/LiteralBytes are computed below from the final filtered
+		// instruction stream so repeated SearchParallel calls accumulate the
+		// same way Search does.
 		me.HashHits += sr.stats.hashHits
 		me.FalseAlarms += sr.stats.falseAlarms
-		me.Matches += sr.stats.matches
-		me.LiteralBytes += sr.stats.literalBytes
 	}
 
 	// Flatten in order.
@@ -855,12 +856,11 @@ func (me *MatchEngine) SearchParallel(data []byte, numWorkers int) []MatchResult
 		all = append(all, r...)
 	}
 
-	// Recompute match/literal counters from the filtered results. Worker
-	// counters are measured on the pre-filter windows (including overlap and
-	// cross-boundary matches), so they can differ from the instructions that
-	// are actually returned. HashHits/FalseAlarms remain diagnostic sums.
-	me.Matches = 0
-	me.LiteralBytes = 0
+	// Accumulate match/literal counters from the final filtered results.
+	// Worker counters are measured on the pre-filter windows (including
+	// overlap and cross-boundary matches), so they can differ from the
+	// instructions that are actually returned. HashHits/FalseAlarms remain
+	// diagnostic sums.
 	for _, r := range all {
 		if r.IsLiteral {
 			me.LiteralBytes += int64(len(r.Data))
@@ -869,6 +869,67 @@ func (me *MatchEngine) SearchParallel(data []byte, numWorkers int) []MatchResult
 		}
 	}
 	return all
+}
+
+// SearchReaderParallel streams newFile from r and matches it in fixed-size
+// in-memory windows with SearchParallel. Results are delivered in file order
+// via fn; as with SearchReader, literal Data is only valid during the
+// callback and is overwritten by the next window.
+//
+// Memory is O(windowSize + per-window result slices), independent of
+// fileSize. A match that would cross a window boundary is not found (the
+// window does not read past the boundary); both windows still reconstruct
+// byte-for-byte correctly and simply send that prefix as literals. For
+// 32-64MiB windows this costs at most a block or two of compression per
+// boundary, which is negligible in practice.
+//
+// SearchReaderParallel 以固定大小的内存窗口流式读取 newFile，并在每个窗口
+// 内用 SearchParallel 并行匹配。结果按文件顺序通过 fn 回调；与 SearchReader
+// 相同，literal Data 仅在回调期间有效，下一窗口会覆盖缓冲。
+//
+// 内存占用为 O(windowSize + 每窗口结果切片)，与文件总大小无关。跨窗口边界
+// 的匹配不会被上一窗口发现，因此该前缀按 literal 发送；重建结果仍逐字节
+// 正确。对 32-64MiB 窗口，每个边界最多损失一两个块的压缩率，实际可忽略。
+func (me *MatchEngine) SearchReaderParallel(r io.Reader, fileSize int64, windowSize, workers int, fn func(MatchResult) error) error {
+	if windowSize <= 0 {
+		return me.SearchReader(r, fileSize, fn)
+	}
+	if workers <= 0 {
+		workers = runtime.GOMAXPROCS(0)
+	}
+
+	buf := make([]byte, windowSize)
+	var base int64
+	for remaining := fileSize; remaining > 0; {
+		want := windowSize
+		if int64(want) > remaining {
+			want = int(remaining)
+		}
+		n, err := io.ReadFull(r, buf[:want])
+		if n > 0 {
+			results := me.SearchParallel(buf[:n], workers)
+			for i := range results {
+				results[i].Offset += base
+			}
+			for _, mr := range results {
+				if err := fn(mr); err != nil {
+					return err
+				}
+			}
+			base += int64(n)
+			remaining -= int64(n)
+		}
+		if err != nil {
+			if err == io.EOF || err == io.ErrUnexpectedEOF {
+				return nil
+			}
+			return err
+		}
+		if n == 0 {
+			return io.ErrNoProgress
+		}
+	}
+	return nil
 }
 
 // fork creates a lightweight copy of the MatchEngine that shares the
