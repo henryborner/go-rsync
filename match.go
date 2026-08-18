@@ -128,10 +128,14 @@ func (me *MatchEngine) buildHashTable() {
 	//  - floor of 65536 keeps the hash 16-bit and the table sparse for small
 	//    files — sparse tables make the "empty slot" branch predictable in
 	//    the all-miss hot path (dense 12-bit tables cost ~0.6 mispredicts/byte).
+	//  - Signatures with >8K blocks (large files) get a 128K table even when
+	//    2×blocks would fit in 64K: the 64K table becomes cache-competitive
+	//    with the data stream and measurably slower on the miss hot path.
 	// Power-of-two size lets us hash with (v+v>>16) & mask — no runtime division.
 	// 扁平开放寻址 + 线性探测。容量 = ≥2×块数 的下一个 2 的幂，下限 65536：
 	//  - 负载 ≤50% 保证探测链短；
 	//  - 下限 65536 保持 16 位哈希且小文件表稀疏——miss 热路径的"空槽"分支可预测。
+	//  - 大文件（块数 >8K）使用 128K 表：64K 表与数据流缓存竞争后 miss 明显变慢。
 	cap := uint32(len(me.checksums)) * 2
 	if cap < 16 {
 		cap = 16
@@ -145,6 +149,9 @@ func (me *MatchEngine) buildHashTable() {
 	cap++
 	if cap < 65536 {
 		cap = 65536
+	}
+	if cap == 65536 && len(me.checksums) > 8192 {
+		cap = 131072
 	}
 	me.tableSize = cap
 	me.tableMask = cap - 1
