@@ -17,7 +17,7 @@ Built to power [Shuttle](https://github.com/henryborner/shuttle), my own Windows
 - **Pluggable strong hash** — md5, sha256, xxh64, xxh3-128 built-in. Register your own with `FastSum` support.
 - **Binary wire protocol** — compact big-endian encoding, ready for SSH pipes.
 - **Streaming I/O** — `GenerateSignatureReader`, `SearchReader`, stream decode — O(blockSize) memory for multi-GB files.
-- **Parallel APIs** — `GenerateSignatureParallel`, `SearchParallel` (near-linear speedup on many cores).
+- **Parallel APIs** — `GenerateSignatureParallel`, `SearchParallel`, `SearchReaderParallel` (near-linear speedup on many cores; streaming variant is O(windowSize) memory).
 - **Rolling checksum** — CHAR_OFFSET=31, uint32 natural-overflow arithmetic.
 - **Well tested** — roundtrip, fuzz, parity (AVX2 vs SSE2 vs pure Go), MD5 8-way + 16-way (AVX2 + AVX-512 vs stdlib).
 
