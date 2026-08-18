@@ -894,6 +894,55 @@ func TestSearchParallelParity(t *testing.T) {
 	}
 }
 
+// TestSearchParallelBoundaryCrossingMatch verifies that a match which starts
+// before a segment boundary and extends past it cannot make the next segment
+// re-emit bytes already covered by that match.  The parallel result must
+// reconstruct to exactly the same file as the serial result.
+func TestSearchParallelBoundaryCrossingMatch(t *testing.T) {
+	const size = 2 << 20
+	basis := make([]byte, size)
+	rand.Read(basis)
+	blockSize := CalculateBlockSize(size)
+	sig := GenerateSignature(basis, blockSize, "md5")
+
+	// Put a clean run of basis data starting half a block before the first
+	// segment boundary, so the first match deliberately crosses the boundary.
+	chunk := ((size+1)/2 + int(blockSize) - 1) / int(blockSize) * int(blockSize)
+	segEnd := chunk
+	first := segEnd - int(blockSize)/2
+	newFile := make([]byte, size)
+	rand.Read(newFile[:first])
+	copy(newFile[first:], basis[:size-first])
+
+	// Serial baseline must reconstruct correctly first.
+	eng1, _ := NewMatchEngine(blockSize, "md5")
+	eng1.LoadSignature(sig)
+	serial := eng1.Search(newFile)
+	recon1, _ := NewReconstructor(basis, blockSize, "md5")
+	out1, err := recon1.Reconstruct(serial)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(out1, newFile) {
+		t.Fatal("serial baseline reconstruction mismatch")
+	}
+
+	for _, workers := range []int{2, 3, 4, 8} {
+		eng2, _ := NewMatchEngine(blockSize, "md5")
+		eng2.LoadSignature(sig)
+		parallel := eng2.SearchParallel(newFile, workers)
+		recon2, _ := NewReconstructor(basis, blockSize, "md5")
+		out2, err := recon2.Reconstruct(parallel)
+		if err != nil {
+			t.Fatalf("workers=%d: reconstruct: %v", workers, err)
+		}
+		if !bytes.Equal(out2, newFile) {
+			t.Fatalf("workers=%d: parallel reconstruction mismatch (len=%d want=%d)",
+				workers, len(out2), len(newFile))
+		}
+	}
+}
+
 func TestSearchParallelIdentical(t *testing.T) {
 	// Identical files should produce near-zero literals with parallel.
 	data := make([]byte, 200*1024)

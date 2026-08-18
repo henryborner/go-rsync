@@ -764,19 +764,21 @@ func (me *MatchEngine) SearchParallel(data []byte, numWorkers int) []MatchResult
 			results := w.Search(segBytes)
 
 			// Filter: keep results within [startOff, startOff+maxOff).
-			// Matches starting before maxOff are always kept.
-			// Literals extending beyond maxOff are trimmed.
+			// Literals extending beyond maxOff are trimmed. A match that
+			// starts inside this segment but extends past the boundary is
+			// emitted as a literal up to the boundary instead of a block
+			// reference; the next segment owns the bytes after the boundary.
+			// This keeps segments independently decodable and prevents the
+			// next worker from duplicating bytes already covered by a
+			// cross-boundary match.
 			var filtered []MatchResult
 			segEnd := startOff + maxOff
 			for _, r := range results {
+				relOff := r.Offset
 				r.Offset += startOff // make absolute
 
 				if r.IsLiteral {
 					litEnd := r.Offset + int64(len(r.Data))
-					// Literal entirely before segment? Skip.
-					if litEnd <= startOff {
-						continue
-					}
 					// Literal starts beyond segment end? Skip.
 					if r.Offset >= segEnd {
 						continue
@@ -790,10 +792,28 @@ func (me *MatchEngine) SearchParallel(data []byte, numWorkers int) []MatchResult
 						r.Data = r.Data[:trimTo]
 					}
 				} else {
-					// Match: keep if it starts within the segment's window range.
-					// Matches always cover blockSize bytes into the basis file;
-					// their Offset is just for ordering.
+					// Match: keep only if it fits before the segment end.
 					if r.Offset >= segEnd {
+						continue
+					}
+					blockLen := int64(me.blockSize)
+					if r.BlockIdx >= 0 && r.BlockIdx < len(me.checksums) {
+						blockLen = int64(me.checksums[r.BlockIdx].Length)
+					}
+					if r.Offset+blockLen > segEnd {
+						// Cross-boundary match: turn the in-segment prefix
+						// into literal data so the next segment starts clean.
+						relEnd := int(maxOff)
+						if relEnd > len(segBytes) {
+							relEnd = len(segBytes)
+						}
+						if relEnd > int(relOff) {
+							filtered = append(filtered, MatchResult{
+								IsLiteral: true,
+								Data:      segBytes[relOff:relEnd],
+								Offset:    r.Offset,
+							})
+						}
 						continue
 					}
 				}
@@ -833,6 +853,20 @@ func (me *MatchEngine) SearchParallel(data []byte, numWorkers int) []MatchResult
 	all := make([]MatchResult, 0, total)
 	for _, r := range segResults {
 		all = append(all, r...)
+	}
+
+	// Recompute match/literal counters from the filtered results. Worker
+	// counters are measured on the pre-filter windows (including overlap and
+	// cross-boundary matches), so they can differ from the instructions that
+	// are actually returned. HashHits/FalseAlarms remain diagnostic sums.
+	me.Matches = 0
+	me.LiteralBytes = 0
+	for _, r := range all {
+		if r.IsLiteral {
+			me.LiteralBytes += int64(len(r.Data))
+		} else {
+			me.Matches++
+		}
 	}
 	return all
 }
