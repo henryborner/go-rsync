@@ -1259,10 +1259,10 @@ func TestChecksum1Parity(t *testing.T) {
 // "raw sums + CHAR_OFFSET post-correction" path produces different s2
 // values than byte-by-byte accumulation when blockSize ∈ [65536, 92681].
 //
-// This is NOT a bug — see docs/checksum-engine.md §5.1. Both Checksum1
-// and checksum1 use the same raw+correction path, so the delta pipeline
-// is internally consistent. The divergence only matters cross-ISA (e.g.
-// AVX2 sender + pure-Go ARM receiver), which go-rsync does not support.
+// This is NOT a bug: both Checksum1 and checksum1 use the same
+// raw+correction path, so the delta pipeline is internally consistent.
+// The divergence only matters cross-ISA (e.g. AVX2 sender + pure-Go ARM
+// receiver), which go-rsync does not support.
 //
 // This test exists to make the divergence explicit and catch accidental
 // assumptions that the two paths are byte-identical.
@@ -1317,6 +1317,6 @@ func TestChecksum1RawVsDirect(t *testing.T) {
 	if !diverged {
 		t.Error("expected s2 divergence in [65536, 92681]; if this fails, " +
 			"the CHAR_OFFSET correction may have been changed to use " +
-			"uint64 intermediates — update docs/checksum-engine.md §5.1")
+			"uint64 intermediates")
 	}
 }

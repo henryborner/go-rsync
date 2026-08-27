@@ -17,7 +17,6 @@ func checksum1AVX512(data []byte, s1, s2 *uint32) bool
 // measurably faster than AVX2 only on Intel server Xeons with full-width
 // 512-bit integer units, and only for blocks ≥ 16 KB (up to +27% at 256 KB);
 // on AMD Zen 4 it is slower, and on CPUs without AVX-512 it would crash.
-// See docs/benchmarks.md → "AVX-512 rolling checksum experiment".
 //
 // ⚠️ Not guaranteed faster on all Intel CPUs — measured on one Cascade Lake
 // Xeon only; benchmark on your own hardware before enabling.

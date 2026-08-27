@@ -81,9 +81,7 @@ delta.ApplyDeltaStream(oldFile, conn, outputFile, blockSize, "md5")
 
 ## 📊 Benchmarks
 
-All numbers below: **AMD Ryzen 9 8940HX (Zen 4, 16 cores / 32 threads)**,
-Windows 11, Go 1.26.5 — the same machine used for the full tables in
-[docs/benchmarks.md](docs/benchmarks.md).
+All numbers below: **AMD Ryzen 9 8940HX (Zen 4, 16 cores / 32 threads)**, Windows 11, Go 1.26.5.
 
 **GenerateSignature (1MB data, blockSize=700, single-threaded):**
 
@@ -127,13 +125,7 @@ Windows 11, Go 1.26.5 — the same machine used for the full tables in
 > Zen 4 it is slower, and on CPUs without AVX-512 it falls back to
 > `Checksum1`. The default `Checksum1` is unchanged (auto AVX2 → SSE2 → Go).
 > **Not guaranteed on all Intel CPUs** — only measured on one Cascade Lake
-> Xeon; benchmark on your own hardware before enabling. See
-> [docs/benchmarks.md](docs/benchmarks.md) → "AVX-512 rolling checksum
-> experiment".
-
-> Per-size curves, allocation counts (B/op, allocs/op), the streaming
-> `SignatureReader` results, and the rsync AVX2 comparison (deterministic +
-> random data): [docs/benchmarks.md](docs/benchmarks.md).
+> Xeon; benchmark on your own hardware before enabling.
 
 Run on your own machine:
 
@@ -165,18 +157,7 @@ go test -bench='BenchmarkMD5x8_Bulk$|BenchmarkMD5x8Core_Bulk$|BenchmarkMD5x16Cor
 | `registry_stdlib.go` | Built-in hash constructors + `FastSum` implementations |
 | `delta_test.go` | Core roundtrip, identical-file, reconstruction tests |
 | `fuzz_test.go` | Fuzz tests: roundtrip, wire encode/decode, checksum parity |
-| `hashsimd/` | **Separate module** — SIMD MD5 engine (8-way AVX2, 16-way AVX-512, 4-way NEON), generators, and tests. See `docs/md5-simd.md`. |
-| `docs/checksum-engine.md` | Checksum engine: algorithm, loop structure, assembly conventions, SSE2/NEON appendix |
-| `docs/md5-simd.md` | MD5 SIMD reference: architecture, techniques, safety checklist |
-| `docs/neon-checksum.md` | ARM64 NEON rolling checksum: UDOT/VUMULL tiers, WORD encodings, performance |
-| `docs/benchmarks.md` | Full benchmark tables with per-op allocations (B/op, allocs/op) |
-
-## 📚 Documentation
-
-- **[Checksum Engine](docs/checksum-engine.md)** — Rolling checksum algorithm, AVX2/SSE2 loop structure, Go Plan 9 conventions, register map, test coverage, performance data.
-- **[MD5 SIMD](docs/md5-simd.md)** — AVX2/AVX-512 parallel MD5 architecture, gather/transpose techniques, assembly notes, safety checklist.
-- **[NEON Checksum](docs/neon-checksum.md)** — ARM64 NEON rolling checksum: UDOT/VUMULL dispatch, WORD encodings, QEMU/CI verification.
-- **[Benchmarks](docs/benchmarks.md)** — Complete benchmark tables with per-operation allocation counts.
+| `hashsimd/` | **Separate module** — SIMD MD5 engine (8-way AVX2, 16-way AVX-512, 4-way NEON), generators, and tests. |
 
 ## 🔗 Related
 
