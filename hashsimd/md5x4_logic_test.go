@@ -1,4 +1,4 @@
-package delta
+package hashsimd
 
 import (
 	"crypto/md5"

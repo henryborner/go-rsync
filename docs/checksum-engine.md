@@ -256,7 +256,7 @@ Go Plan 9 swaps src1/src2 for non-commutative SIMD instructions:
 | `VPANDN A,B,C` | `C = ~A & B` | `C = A &^ B` |
 | `VPTERNLOGD imm,A,B,C` | n = (C<<2) \| (A<<1) \| B | n = (C<<2) \| (B<<1) \| A |
 
-`VPTERNLOGD` truth-table immediates must use Go-swapped order. Using Intel-manual values produces wrong MD5 hashes. Correct Go values: R1=$0xD8, R2=$0xAC, R4=$0x63. See `gen_md5x8/main.go` and `gen_md5x16/main.go`.
+`VPTERNLOGD` truth-table immediates must use Go-swapped order. Using Intel-manual values produces wrong MD5 hashes. Correct Go values: R1=$0xD8, R2=$0xAC, R4=$0x63. See `hashsimd/gen_md5x8/main.go` and `hashsimd/gen_md5x16/main.go`.
 
 ### 6.3 XMM/YMM Register Aliasing
 
@@ -352,7 +352,7 @@ dependencies.
 | `TestAVX2Parity` (11 cases) | zeros, 0xFF, incremental, random | Verify AVX2 engine |
 | `TestSSE2Parity` (10 cases) | zeros, 0xFF, incremental, random | Verify SSE2 engine |
 
-### MD5 SIMD Parity (`md5x8_test.go`)
+### MD5 SIMD Parity (`hashsimd/md5x8_test.go`)
 
 | Test | Scope |
 | ------ | ------- |

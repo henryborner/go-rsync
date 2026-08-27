@@ -1,6 +1,6 @@
 //go:build amd64
 
-package delta
+package hashsimd
 
 import (
 	"encoding/binary"
@@ -26,13 +26,10 @@ func md5x16available() bool {
 	return cpu.X86.HasAVX512F && cpu.X86.HasAVX512DQ
 }
 
-// MD5x16available is the exported version for external use.
-func MD5x16available() bool { return md5x16available() }
-
-// MD5x16CoreForBench is an exported wrapper for benchmarking the pure AVX512 core.
-func MD5x16CoreForBench(x *[16][16]uint32, state *[4][16]uint32) {
-	md5x16core(x, state)
-}
+// MD5x16Core runs the raw 16-way AVX-512 core over pre-transposed message
+// words. Exported for benchmarking; the Go wrappers in hashsimd.go handle
+// load+transpose+finalize.
+func MD5x16Core(x *[16][16]uint32, state *[4][16]uint32) { md5x16core(x, state) }
 
 // md5Hash16wayAVX512 hashes 16 blocks using the AVX512-accelerated path.
 func md5Hash16wayAVX512(data []byte, offsets [16]int, lengths [16]int, out *[16][16]byte) {

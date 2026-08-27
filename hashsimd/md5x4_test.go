@@ -1,6 +1,6 @@
 //go:build arm64
 
-package delta
+package hashsimd
 
 import (
 	"crypto/md5"
@@ -148,24 +148,5 @@ func BenchmarkMD5x4Core_Raw(b *testing.B) {
 	b.ResetTimer()
 	for b.Loop() {
 		md5x4core(&x, &state)
-	}
-}
-
-// BenchmarkSignature_NEON measures end-to-end NEON signature generation throughput.
-func BenchmarkSignature_NEON(b *testing.B) {
-	if !md5x4available() {
-		b.Skip("NEON not available")
-	}
-	const fileSize = 16 * 1024 * 1024 // 16 MB
-	data := make([]byte, fileSize)
-	for i := range data {
-		data[i] = byte(i % 256)
-	}
-	blockSize := CalculateBlockSize(int64(fileSize))
-
-	b.SetBytes(fileSize)
-	b.ResetTimer()
-	for b.Loop() {
-		GenerateSignature(data, blockSize, "md5")
 	}
 }

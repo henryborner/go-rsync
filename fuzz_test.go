@@ -2,7 +2,6 @@ package delta
 
 import (
 	"bytes"
-	"crypto/md5"
 	"crypto/rand"
 	"io"
 	"testing"
@@ -240,58 +239,6 @@ func FuzzChecksum1Parity(t *testing.F) {
 			if len(data) > 0 {
 				t.Fatalf("len=%d: Checksum1=%08x checksum1→%08x (s1=%d s2=%d)",
 					len(data), want, got, s1, s2)
-			}
-		}
-	})
-}
-
-// ── MD5 SIMD parity fuzz ───────────────────────────────────────────
-
-func FuzzMD5x8Parity(t *testing.F) {
-	if !md5x8available() {
-		t.Skip("AVX2 not available")
-	}
-
-	seeds := []int{64, 128, 700, 1024, 2048}
-	for _, sz := range seeds {
-		data := make([]byte, 8*sz)
-		rand.Read(data)
-		t.Add(data, sz)
-	}
-
-	t.Fuzz(func(t *testing.T, data []byte, blockLen int) {
-		if blockLen < 1 || blockLen > 8192 {
-			return
-		}
-		need := 8 * blockLen
-		if len(data) < need {
-			return
-		}
-
-		var offsets, lengths [8]int
-		for b := 0; b < 8; b++ {
-			offsets[b] = b * blockLen
-			lengths[b] = blockLen
-		}
-
-		var outAVX2 [8][16]byte
-		md5Hash8wayAVX2(data, offsets, lengths, &outAVX2)
-
-		for b := 0; b < 8; b++ {
-			expected := md5.Sum(data[offsets[b] : offsets[b]+lengths[b]])
-			if outAVX2[b] != expected {
-				t.Fatalf("lane %d (len=%d) mismatch:\n  AVX2: %x\n  md5:  %x",
-					b, blockLen, outAVX2[b], expected)
-			}
-		}
-
-		// Also compare against pure Go reference.
-		var outGo [8][16]byte
-		md5Hash8wayGo(data, offsets, lengths, &outGo)
-		for b := 0; b < 8; b++ {
-			if outAVX2[b] != outGo[b] {
-				t.Fatalf("lane %d (len=%d) AVX2 vs Go:\n  AVX2: %x\n  Go:   %x",
-					b, blockLen, outAVX2[b], outGo[b])
 			}
 		}
 	})

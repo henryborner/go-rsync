@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"testing"
 	"time"
+
+	"github.com/henryborner/go-rsync/hashsimd"
 )
 
 func TestRollingSum(t *testing.T) {
@@ -369,6 +371,27 @@ func BenchmarkSignature(b *testing.B) {
 	rand.Read(data)
 	blockSize := CalculateBlockSize(int64(len(data)))
 
+	b.ResetTimer()
+	for b.Loop() {
+		GenerateSignature(data, blockSize, "md5")
+	}
+}
+
+// BenchmarkSignature_NEON measures end-to-end signature generation on the
+// ARM64 NEON 4-way path (skips elsewhere). The NEON engine lives in hashsimd;
+// this exercises the core dispatch end-to-end.
+func BenchmarkSignature_NEON(b *testing.B) {
+	if !hashsimd.MD5x4Available() {
+		b.Skip("NEON not available")
+	}
+	const fileSize = 16 * 1024 * 1024 // 16 MB
+	data := make([]byte, fileSize)
+	for i := range data {
+		data[i] = byte(i % 256)
+	}
+	blockSize := CalculateBlockSize(int64(fileSize))
+
+	b.SetBytes(fileSize)
 	b.ResetTimer()
 	for b.Loop() {
 		GenerateSignature(data, blockSize, "md5")

@@ -2,7 +2,7 @@
 // Reference implementation for testing and validation.
 // md5x8_purego.go — 纯 Go 8路并行 MD5 参考实现，用于测试和验证。
 
-package delta
+package hashsimd
 
 import "encoding/binary"
 

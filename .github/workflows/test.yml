@@ -21,10 +21,10 @@ jobs:
           go-version: ${{ matrix.go }}
 
       - name: Vet
-        run: go vet ./...
+        run: go vet ./... ./hashsimd/...
 
       - name: Test
-        run: go test -count=1 -timeout=120s ./...
+        run: go test -count=1 -timeout=120s ./... ./hashsimd/...
 
       - name: Fuzz
         run: |
@@ -33,6 +33,7 @@ jobs:
           go test -fuzz=FuzzWireSignature -fuzztime=5s
           go test -fuzz=^FuzzWireInstructions$ -fuzztime=5s
           go test -fuzz=FuzzWireInstructionsCorrupt -fuzztime=5s
+          cd hashsimd && go test -fuzz=FuzzMD5x8Parity -fuzztime=10s
 
   # ── amd64 benchmark (AVX2/SSE2 vs pure Go) ──
   bench-amd64:
@@ -66,10 +67,10 @@ jobs:
         run: grep -E 'processor|Features|CPU part|CPU implementer' /proc/cpuinfo | head -5 || true
 
       - name: Vet
-        run: go vet ./...
+        run: go vet ./... ./hashsimd/...
 
       - name: Test
-        run: go test -count=1 -timeout=120s ./...
+        run: go test -count=1 -timeout=120s ./... ./hashsimd/...
 
       - name: Fuzz
         run: |
@@ -78,11 +79,12 @@ jobs:
           go test -fuzz=FuzzWireSignature -fuzztime=5s
           go test -fuzz=^FuzzWireInstructions$ -fuzztime=5s
           go test -fuzz=FuzzWireInstructionsCorrupt -fuzztime=5s
+          cd hashsimd && go test -fuzz=FuzzMD5x8Parity -fuzztime=10s
 
       - name: Benchmark ARM64
         run: |
-          go test -bench=BenchmarkMD5x4 -benchtime=300ms -count=1 ./... 2>&1 | tee bench_arm64.txt
-          go test -bench=BenchmarkSignature_NEON -benchtime=300ms -count=1 ./... 2>&1 | tee -a bench_arm64.txt
+          go test -bench=BenchmarkMD5x4 -benchtime=300ms -count=1 ./hashsimd/... 2>&1 | tee bench_arm64.txt
+          go test -bench=BenchmarkSignature_NEON -benchtime=300ms -count=1 ./hashsimd/... 2>&1 | tee -a bench_arm64.txt
 
       - name: Upload ARM64 results
         uses: actions/upload-artifact@v4

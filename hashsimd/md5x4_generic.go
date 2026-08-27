@@ -1,6 +1,6 @@
 //go:build !arm64
 
-package delta
+package hashsimd
 
 // md5x4available reports whether NEON 4-way MD5 is available.
 // Stub for non-arm64 platforms.

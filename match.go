@@ -6,6 +6,8 @@ import (
 	"io"
 	"runtime"
 	"sync"
+
+	"github.com/henryborner/go-rsync/hashsimd"
 )
 
 // BlockSum represents a single block checksum from file B.
@@ -1014,7 +1016,7 @@ func GenerateSignatureParallel(data []byte, blockSize int32, strongAlgo string) 
 			defer wg.Done()
 
 			// Use SIMD batch path (8-way AVX2 / 4-way NEON) when available for md5.
-			if strongAlgo == "md5" && md5x8available() && blockSize >= 64 {
+			if strongAlgo == "md5" && hashsimd.MD5x8Available() && blockSize >= 64 {
 				const batch = 8
 				for base := start; base < end; base += batch {
 					n := batch
@@ -1038,7 +1040,7 @@ func GenerateSignatureParallel(data []byte, blockSize int32, strongAlgo string) 
 							o += int(blockSize)
 						}
 						var out8 [8][16]byte
-						md5Hash8wayAVX2(batchBuf, off8, len8, &out8)
+						hashsimd.MD5Hash8way(batchBuf, off8, len8, &out8)
 						for b := 0; b < 8; b++ {
 							idx := base + b
 							sum2Start := idx * algo.Length
@@ -1080,7 +1082,7 @@ func GenerateSignatureParallel(data []byte, blockSize int32, strongAlgo string) 
 				return
 			}
 
-			if strongAlgo == "md5" && md5x4available() && blockSize >= 64 {
+			if strongAlgo == "md5" && hashsimd.MD5x4Available() && blockSize >= 64 {
 				const batch = 4
 				for base := start; base < end; base += batch {
 					n := batch
@@ -1103,7 +1105,7 @@ func GenerateSignatureParallel(data []byte, blockSize int32, strongAlgo string) 
 							o += int(blockSize)
 						}
 						var out4 [4][16]byte
-						md5Hash4wayNEON(batchBuf, off4, len4, &out4)
+						hashsimd.MD5Hash4way(batchBuf, off4, len4, &out4)
 						for b := 0; b < 4; b++ {
 							idx := base + b
 							sum2Start := idx * algo.Length
@@ -1208,7 +1210,7 @@ func GenerateSignatureReader(r io.Reader, fileSize int64, blockSize int32, stron
 	// AVX512 16-way md5 fast path (blockSize >= 2KB only).
 	// AVX512 gather overhead dominates for small blocks; threshold empirically
 	// determined on Intel Xeon Platinum @ 2.5GHz (crossover at ~1400 bytes).
-	if strongAlgo == "md5" && md5x16available() && blockSize >= 2048 {
+	if strongAlgo == "md5" && hashsimd.MD5x16Available() && blockSize >= 2048 {
 		const batchSize = 16
 		batchBuf := make([]byte, batchSize*int(blockSize))
 
@@ -1240,7 +1242,7 @@ func GenerateSignatureReader(r io.Reader, fileSize int64, blockSize int32, stron
 					len16[b] = int(blockSize)
 					off += int(blockSize)
 				}
-				md5Hash16wayAVX512(batchBuf, off16, len16, &out16)
+				hashsimd.MD5Hash16way(batchBuf, off16, len16, &out16)
 				for b := 0; b < 16; b++ {
 					idx := int(base) + b
 					start := idx * algo.Length
@@ -1283,7 +1285,7 @@ func GenerateSignatureReader(r io.Reader, fileSize int64, blockSize int32, stron
 	}
 
 	// AVX2 8-way md5 fast path: batch-read 8 blocks at a time for SIMD.
-	if strongAlgo == "md5" && md5x8available() {
+	if strongAlgo == "md5" && hashsimd.MD5x8Available() {
 		const batchSize = 8
 		batchBuf := make([]byte, batchSize*int(blockSize))
 
@@ -1317,7 +1319,7 @@ func GenerateSignatureReader(r io.Reader, fileSize int64, blockSize int32, stron
 					off += int(blockSize)
 				}
 				var out8 [8][16]byte
-				md5Hash8wayAVX2(batchBuf, off8, len8, &out8)
+				hashsimd.MD5Hash8way(batchBuf, off8, len8, &out8)
 				for b := 0; b < 8; b++ {
 					idx := int(base) + b
 					start := idx * algo.Length
@@ -1361,7 +1363,7 @@ func GenerateSignatureReader(r io.Reader, fileSize int64, blockSize int32, stron
 	}
 
 	// NEON 4-way md5 fast path for ARM64.
-	if strongAlgo == "md5" && md5x4available() {
+	if strongAlgo == "md5" && hashsimd.MD5x4Available() {
 		const batchSize = 4
 		batchBuf := make([]byte, batchSize*int(blockSize))
 
@@ -1392,7 +1394,7 @@ func GenerateSignatureReader(r io.Reader, fileSize int64, blockSize int32, stron
 					off += int(blockSize)
 				}
 				var out4 [4][16]byte
-				md5Hash4wayNEON(batchBuf, off4, len4, &out4)
+				hashsimd.MD5Hash4way(batchBuf, off4, len4, &out4)
 				for b := 0; b < 4; b++ {
 					idx := int(base) + b
 					start := idx * algo.Length

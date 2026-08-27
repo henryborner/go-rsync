@@ -42,7 +42,7 @@
 
 | Algorithm | Path | Time | Throughput | B/op | allocs/op |
 |-----------|------|------|-----------|------|-----------|
-| md5 | AVX2 8-way (`md5x8_amd64.s`) | ~341 µs | 2.93 GB/s | 120,928 | 5 |
+| md5 | AVX2 8-way (`hashsimd/md5x8_amd64.s`) | ~341 µs | 2.93 GB/s | 120,928 | 5 |
 | sha256 | stdlib SHA-NI (`crypto/sha256`) | ~616 µs | 1.62 GB/s | 140,064 | 5 |
 | xxh64 | cespare/xxhash | ~151 µs | 6.62 GB/s | 103,200 | 5 |
 | xxh3 | zeebo/xxh3 | ~116 µs | 8.62 GB/s | 115,488 | 5 |
@@ -261,6 +261,8 @@ harness on the Intel machine vs the AVX2 path:
   Benchmark on your own hardware before enabling `Checksum1AVX512`.
 
 ## MD5 SIMD cores (zero-alloc)
+
+> Benchmarks below live in the `hashsimd/` submodule (`go test -bench=... ./hashsimd/`).
 
 ### AMD Ryzen 9 8940HX
 

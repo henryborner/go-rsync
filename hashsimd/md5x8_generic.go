@@ -1,6 +1,6 @@
 //go:build !amd64
 
-package delta
+package hashsimd
 
 // md5x8available reports whether AVX2 8-way MD5 is available.
 // Stub for non-amd64 platforms.

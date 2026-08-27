@@ -4,14 +4,13 @@
 [![Go](https://img.shields.io/badge/Go-1.26+-blue)](https://go.dev)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
-**Go implementation of a binary delta-transfer algorithm** — with AVX2/AVX-512 accelerated MD5 (8-way + 16-way SIMD). Rolling checksum matching, block signature generation, file reconstruction, and a binary wire protocol.
+**Go implementation of a binary delta-transfer algorithm** — rolling checksum matching, block signature generation, file reconstruction, and a binary wire protocol. The SIMD strong-hash engine (AVX2 8-way + AVX-512 16-way MD5) lives in the separate [`hashsimd`](hashsimd/) module.
 
 Built to power [Shuttle](https://github.com/henryborner/shuttle), my own Windows-native file sync tool — this library was extracted from Shuttle and is its core delta-transfer engine.
 
 ## Features
 
-- **8-way AVX2 MD5** — 8 blocks hashed in parallel via AVX2 assembly (YMM), VPGATHERDD gather load + transpose.
-- **16-way AVX-512 MD5** — 16 blocks in parallel (ZMM), blockSize ≥ 2KB.
+- **SIMD MD5 in the `hashsimd` submodule** — 8-way AVX2 (YMM, VPGATHERDD) + 16-way AVX-512 (ZMM) + 4-way ARM64 NEON parallel MD5, independently reusable.
 - **3-tier checksum engine** — AVX2 (64B/iter) → SSE2 (32B/iter) → pure Go 128B batch. Auto-detects CPU at runtime; opt-in AVX-512 (`Checksum1AVX512`).
 - **Pluggable strong hash** — md5, sha256, xxh64, xxh3-128 built-in. Register your own with `FastSum` support.
 - **Binary wire protocol** — compact big-endian encoding, ready for SSH pipes.
@@ -24,7 +23,12 @@ Built to power [Shuttle](https://github.com/henryborner/shuttle), my own Windows
 
 ```bash
 go get github.com/henryborner/go-rsync
+go get github.com/henryborner/go-rsync/hashsimd   # optional: SIMD MD5 engine
 ```
+
+The repo is a Go workspace: the delta core (`github.com/henryborner/go-rsync`)
+depends on `github.com/henryborner/go-rsync/hashsimd` for the SIMD MD5 fast
+paths. `hashsimd` can also be used standalone for hashing many small blocks.
 
 ## 🚀 Quick start
 
@@ -119,7 +123,8 @@ Windows 11, Go 1.26.5 — the same machine used for the full tables in
 Run on your own machine:
 
 ```bash
-go test -bench='BenchmarkSignature$|BenchmarkSignatureXXH64$|BenchmarkSignatureXXH3$|BenchmarkSignatureSHA256$|BenchmarkSignatureParallel$|BenchmarkMD5x8_Bulk$|BenchmarkMD5x8Core_Bulk$|BenchmarkMD5x16Core_Bulk$|BenchmarkChecksum1$|BenchmarkSignatureReader$' -benchmem -count=3 .
+go test -bench='BenchmarkSignature$|BenchmarkSignatureXXH64$|BenchmarkSignatureXXH3$|BenchmarkSignatureSHA256$|BenchmarkSignatureParallel$|BenchmarkChecksum1$|BenchmarkSignatureReader$' -benchmem -count=3 .
+go test -bench='BenchmarkMD5x8_Bulk$|BenchmarkMD5x8Core_Bulk$|BenchmarkMD5x16Core_Bulk$' -benchmem -count=3 ./hashsimd/
 ```
 
 ## 📁 Package layout
@@ -142,29 +147,10 @@ go test -bench='BenchmarkSignature$|BenchmarkSignatureXXH64$|BenchmarkSignatureX
 | `rolling_fast_arm64.go` | ARM64 NEON tiered dispatch: UDOT (dotprod) → VUMULL → Go |
 | `rolling_neon_dotprod_arm64.s` | UDOT checksum assembly (ARMv8.2+dotprod, 4 insns/64B) |
 | `rolling_neon_arm64.s` | VUMULL NEON checksum assembly (ARM64 fallback) |
-| `md5x8_amd64.s` | **Generated** — 64-step unrolled AVX2 MD5 core (8-way) |
-| `md5x8_transpose_fast_amd64.s` | Register-shuffle transpose (~91 vs ~288 VPINSRD instructions) |
-| `md5x8_load_transpose_amd64.s` | VPINSRD scalar load+transpose (~288 insn/chunk, test cross-validation) |
-| `md5x8_amd64.go` | Go-side glue: `md5Hash8wayAVX2`, `md5Finalize8way` |
-| `md5x8_common.go` | Shared MD5 constants + `md5FinalLane` |
-| `md5x8_generic.go` | Stubs for non-amd64 (`!amd64`) |
-| `md5x8_purego.go` | Correct pure-Go 8-way MD5 reference (test/validation only) |
-| `md5x8_gather_amd64.s` | VPGATHERDD gather load + transpose (8-way AVX2) |
-| `md5x16_amd64.s` | **Generated** — AVX-512 MD5 core (16-way, ≥2KB blocks) |
-| `md5x16_amd64.go` | Go-side glue for AVX-512 path |
-| `md5x16_gather_amd64.s` | ZMM VPGATHERDD load+transpose (k-mask reloaded per gather) |
-| `md5x4_arm64.s` | **Generated** — 4-way NEON MD5 core (64 unrolled steps) |
-| `md5x4_arm64.go` | Go-side glue for 4-way NEON MD5 |
-| `md5x4_generic.go` | Stubs for non-arm64 |
-| `md5x4_ref.go` | Pure-Go 4-way MD5 reference (validation) |
-| `gen_md5x4/main.go` | Code generator for `md5x4_arm64.s` |
 | `registry_stdlib.go` | Built-in hash constructors + `FastSum` implementations |
-| `md5x8_test.go` | Tests: 8-way + 16-way MD5 parity, gather verification |
-| `md5x8_rand_test.go` | Randomized MD5 parity (100 iterations × 2–8 random-length blocks) |
 | `delta_test.go` | Core roundtrip, identical-file, reconstruction tests |
 | `fuzz_test.go` | Fuzz tests: roundtrip, wire encode/decode, checksum parity |
-| `gen_md5x8/main.go` | Code generator for `md5x8_amd64.s` |
-| `gen_md5x16/main.go` | Code generator for `md5x16_amd64.s` |
+| `hashsimd/` | **Separate module** — SIMD MD5 engine (8-way AVX2, 16-way AVX-512, 4-way NEON), generators, and tests. See `docs/md5-simd.md`. |
 | `docs/checksum-engine.md` | Checksum engine: algorithm, loop structure, conventions, optimization history, SSE2 appendix |
 | `docs/md5-simd.md` | MD5 SIMD reference: architecture, techniques, safety checklist |
 | `docs/neon-checksum.md` | ARM64 NEON rolling checksum: UDOT/VUMULL tiers, WORD encodings, performance |

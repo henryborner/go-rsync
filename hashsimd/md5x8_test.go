@@ -1,7 +1,7 @@
 //go:build amd64
 
 // Tests for 8-way parallel MD5 (both pure Go reference and AVX2 assembly).
-package delta
+package hashsimd
 
 import (
 	"crypto/md5"

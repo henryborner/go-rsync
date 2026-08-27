@@ -1,6 +1,6 @@
 //go:build amd64
 
-package delta
+package hashsimd
 
 import (
 	"crypto/md5"

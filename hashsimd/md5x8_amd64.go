@@ -1,6 +1,6 @@
 //go:build amd64
 
-package delta
+package hashsimd
 
 import (
 	"encoding/binary"
@@ -16,10 +16,10 @@ import (
 //go:noescape
 func md5x8core(x *[16][8]uint32, state *[4][8]uint32)
 
-// MD5x8CoreForBench is an exported wrapper for benchmarking the pure AVX2 core.
-func MD5x8CoreForBench(x *[16][8]uint32, state *[4][8]uint32) {
-	md5x8core(x, state)
-}
+// MD5x8Core runs the raw 8-way AVX2 core (64 MD5 steps on 8 lanes) over
+// pre-transposed message words. Exported for benchmarking; the Go wrappers
+// in hashsimd.go handle load+transpose+finalize.
+func MD5x8Core(x *[16][8]uint32, state *[4][8]uint32) { md5x8core(x, state) }
 
 // md5x8TransposeFast is a register-shuffle-based transpose from contiguous buffer.
 // Uses VPUNPCK instead of VPINSRD (~91 vs ~288 instructions).

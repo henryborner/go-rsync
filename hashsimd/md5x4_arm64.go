@@ -1,6 +1,6 @@
 //go:build arm64
 
-package delta
+package hashsimd
 
 import (
 	"encoding/binary"
@@ -13,9 +13,6 @@ import (
 func md5x4available() bool {
 	return cpu.ARM64.HasASIMD
 }
-
-// MD5x4available is the exported version for external use.
-func MD5x4available() bool { return md5x4available() }
 
 // md5x4core runs 64 MD5 steps on 4 parallel blocks using NEON.
 // x points to 16 pre-transposed message words (16 × [4]uint32 = 256 bytes).
