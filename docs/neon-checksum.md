@@ -9,7 +9,6 @@
 | Feature | Value |
 |---------|-------|
 | Architecture | ARM64 NEON (128-bit SIMD) |
-| Current version | **v0.4.6** — tiered UDOT / VUMULL dispatch |
 | UDOT path | 4 insns/64B, **27 GB/s** (requires dotprod) |
 | VUMULL path | 20 insns/64B, **12 GB/s** (all ARM64) |
 | Block size | 2×32B per iteration (64B unrolled) |
@@ -35,7 +34,7 @@ Comparison across GitHub runners:
 
 ## Architecture
 
-### UDOT path (v12, primary)
+### UDOT path (primary)
 
 ```
 UDOT V12.4S, Vn.16B, Vm.16B
@@ -45,7 +44,7 @@ UDOT V12.4S, Vn.16B, Vm.16B
 Weight table: byte-packed (same layout as VUMULL).
 ```
 
-### VUMULL path (v10, fallback)
+### VUMULL path (fallback)
 
 ```
 VUMULL  ×8 — byte×weight → halfword
@@ -77,20 +76,6 @@ if n >= 64 {
 }
 // fall through to pure Go 128B batched path
 ```
-
-## Version History
-
-| Ver | Approach | 1024KB MB/s | Notes |
-|-----|----------|:--:|------|
-| v1–v8 | VUMULL/VMLAL variants | — | All had s2 correctness bugs (undetected) |
-| v9 | VMLAL, fixed weights | 8,930 | Correct but slow (16 serial VMLAL) |
-| **v10** | **VUMULL, correct order** | **11,958** | **Verified correct. Fallback path.** |
-| v11 | VUMULL 128B unroll | 11,926 | No gain — memory bound |
-| **v12** | **UDOT dotprod** | **25,820** | **4 insns/64B. Primary path.** |
-| v13 | UDOT 128B unroll | 23,794 | Regression — I-cache pressure |
-
-> ⚠️ v1–v8 s2 was WRONG. Passed CI because `TestChecksum1Parity` compared NEON vs NEON.
-> v9+ fixed with `TestNEONParityRaw` cross-validation against pure-Go reference.
 
 ## WORD Encoding Reference
 
@@ -147,7 +132,7 @@ op2 to ARM Rn (1st source), dst last -> Rd.
 VADDP is asymmetric (op2 -> low half, op1 -> high half), unlike commutative
 VADD. Never assume commutative order for VADDP — verify with objdump.
 
-### VMLAL requires halfword weights (v7 bug)
+### VMLAL requires halfword weights (VUMULL/VMLAL path)
 
 VMLAL reads weight registers as `.4H`/`.8H` (halfwords), but the weight table
 was byte-packed for VUMULL. Each pair of consecutive bytes was misinterpreted
@@ -156,7 +141,7 @@ as a single halfword, producing garbage weights.
 ### TestChecksum1Parity is self-consistency, not correctness
 
 CI's existing test compared NEON vs NEON — both compute the same (potentially wrong)
-result. v9+ added `TestNEONParityRaw` that validates against a pure-Go reference.
+result. `TestNEONParityRaw` validates against a pure-Go reference.
 
 ## Lessons Learned
 
@@ -174,8 +159,7 @@ result. v9+ added `TestNEONParityRaw` that validates against a pure-Go reference
 
 5. **Don't hand-compute WORD encodings** — use GNU as + objdump.
 
-6. **Cross-validation tests are essential** — without `TestNEONParityRaw`, v1-v8's s2 bug
-   would have shipped undetected.
+6. **Cross-validation tests are essential** — without `TestNEONParityRaw`, a wrong s2 would have shipped undetected.
 
 ## Files
 

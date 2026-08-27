@@ -205,10 +205,9 @@ the hash-table lookup latency (L2/L3) dominates the remaining cost per byte.
 
 ## Checksum1 (rolling weak checksum — zero-alloc)
 
-(v7 16-bit-lane rewrite 2026-08-02: 19→16 instructions, no VPMADDWD.
-Conditional prefetch 2026-08-03: `PREFETCHT0` only for blocks ≥ 64 KB — the
-384 B-ahead prefetch ran past the buffer end and measurably hurt
-cache-resident sizes on Intel. Pre-v7: 64.2 / 79.0 / 80.2 / 80.4 GB/s.)
+(16-bit-lane AVX2/SSE2: 19→16 instructions, no VPMADDWD. Conditional
+prefetch: `PREFETCHT0` only for blocks ≥ 64 KB — the 384 B-ahead prefetch
+ran past the buffer end and measurably hurt cache-resident sizes on Intel.)
 
 ### AMD Ryzen 9 8940HX (go test harness)
 
@@ -390,8 +389,6 @@ cross-checked with `go test -bench`.
   narrower integer SIMD): signature hashing, Search, ApplyDelta, wire encode.
 - `SignatureParallel` and `SearchParallel` scale with GOMAXPROCS — Intel's
   104-thread numbers are not comparable to AMD's 32-thread ones.
-- Raw Intel count=3 medians (newest ebmc6.26xlarge instance) archived in
-  [benchmarks-intel-full.md](benchmarks-intel-full.md).
 
 ## Reproducing the vs-rsync comparison
 

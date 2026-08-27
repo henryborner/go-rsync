@@ -29,7 +29,7 @@
 | PREFETCHT0 | 384 bytes ahead, **only for blocks ≥ 64 KB** (conditional prefetch, 2026-08-03) |
 | Loop instructions | 15 (no-prefetch) / 16 (prefetch, ≥ 64 KB) |
 
-> **Key technique (16-bit lanes, v7)**: All accumulators (running s1, Σs1_before, Σweighted) are kept in 16-bit lanes. `VPADDW` wraps mod 2^16 naturally — that wrap IS the truncation — so the four `VPMADDWD` pair-sum instructions (which existed only to pack 16-bit lanes into 32-bit) are eliminated: 19 → 16 instructions, 8 → 4 multiply-ops. Per-block lane values stay < 65536 (s1 lane ≤ 510; weighted lane ≤ 32,385 < 32767 no saturation; merged ≤ 48,450 < 65536 no wrap), so nothing wraps within a block; cross-block accumulation wraps = exact mod 2^16. Bit-identical to the old 32-bit version for the low 16 bits of s1/s2 (measured +31~37% on Zen 4).
+> **Key technique (16-bit lanes)**: All accumulators (running s1, Σs1_before, Σweighted) are kept in 16-bit lanes. `VPADDW` wraps mod 2^16 naturally — that wrap IS the truncation — so the four `VPMADDWD` pair-sum instructions (which existed only to pack 16-bit lanes into 32-bit) are eliminated: 19 → 16 instructions, 8 → 4 multiply-ops. Per-block lane values stay < 65536 (s1 lane ≤ 510; weighted lane ≤ 32,385 < 32767 no saturation; merged ≤ 48,450 < 65536 no wrap), so nothing wraps within a block; cross-block accumulation wraps = exact mod 2^16. Bit-identical to the 32-bit version for the low 16 bits of s1/s2.
 
 ## 2. Algorithm
 
@@ -71,7 +71,7 @@ lanes (wrap = exact mod 2^16).
 The AVX2 loop exists as two bodies (conditional prefetch, 2026-08-03): 15
 instructions without prefetch (blocks < 64 KB) and 16 with. Shown below is the
 no-prefetch body; the ≥ 64 KB body adds one `PREFETCHT0 384(DI)` before the
-bottom-load. (v7 history: 19 → 16, the four VPMADDWD gone.)
+bottom-load. (19 → 16 instructions; the four VPMADDWD are gone.)
 
 ```asm
 loop:
@@ -110,8 +110,7 @@ done:
   The 384 B-ahead prefetch runs past the buffer end; on Intel it measurably
   hurt cache-resident sizes (a 4 KB dip; 2–32 KB up to −50%), while ≥ 64 KB
   (data leaves the cache) genuinely benefits. On Zen 4 it was near-neutral
-  for all sizes. See §5 "Conditional prefetch". (The original v3 "~3% gain on
-  Xeon cloud VMs" was an early historical measurement on different hardware.)
+  for all sizes. See §5 "Conditional prefetch".
 
 ## 4. Exit Reduction
 
@@ -148,40 +147,18 @@ Asm handles all bytes — full 64B blocks plus scalar remainder (0..63 bytes) in
 
 ## 5. Optimizations
 
-| Version | Change | Instrs | Xeon 1KB | Ryzen 64KB |
-| --------- | -------- | :------: | :--------: | :----------: |
-| v0 | Signed VPMADDUBSW + VPMOVSXWD + per-iter s1 reduction | 45 | — | — |
-| — | Unsigned + VPUNPCK zero-extend | 41 | — | — |
-| — | Preload low-weight table Y13 | 36 | — | — |
-| — | Deferred s1 reduction | 27 | — | — |
-| v1 | Bottom-load + avoid init_s1 broadcast | 28 | 27.2 GB/s | 51.5 GB/s |
-| v2 | VPADDW merge-first-then-extend (−6 instrs) | 22 | 35.8 GB/s | 64.1 GB/s |
-| v3 | PREFETCHT0 + OOB guard | 22 | 36.6 GB/s | 59.6 GB/s |
-| v4 | VPMADDWD pair-sum for s1 (−2 instrs) | 20 | — | 69.2 GB/s |
-| v5 | VPMADDWD per-half for s2 + asm remainder + merged exit | 19 | 35.1 GB/s | — |
-| v6 | CHAR_OFFSET + packing in asm, combined ones table | 19 | 37.4 GB/s | — |
-| v7 | **16-bit lanes** (VPADDW wrap = mod 2^16), drop all VPMADDWD | **16** | — | 111.4 GB/s |
+**Conditional prefetch**: `PREFETCHT0 384(DI)` runs only for blocks ≥ 64 KB;
+smaller sizes use a no-prefetch loop body (no per-iteration branch). The
+384 B-ahead prefetch ran past the buffer end and measurably hurt
+cache-resident sizes on Intel (go-rsync 4 KB: +52%; 2–32 KB +16–50%), while
+≥ 64 KB keeps the prefetch and is slightly faster than the all-prefetch
+build. On Zen 4 the change is neutral (±1%). Both AVX2 and SSE2 get the
+two-body loop.
 
-**Cumulative**: 28→16 instructions (−43%). v7 is the 16-bit-lane rewrite
-(2026-08-02): all accumulators stay in 16-bit lanes, VPADDW wrap is the
-truncation, so the four VPMADDWD pair-sums are deleted. Measured on Zen 4:
-+37% at 64KB (80.2→111.4 GB/s), +35% at 1MB, +16% at 1KB. SSE2 got the same
-treatment (19→16 insns, +48% at 64KB: 38.6→57.3 GB/s). (The "16" is the
-pre-conditional-prefetch v7 count; today the loop is 15 (no-prefetch) / 16
-(≥ 64 KB prefetch) — see §3.)
-
-**Conditional prefetch (2026-08-03)**: `PREFETCHT0 384(DI)` now runs only for
-blocks ≥ 64 KB; smaller sizes use a no-prefetch loop body (no per-iteration
-branch). The 384 B-ahead prefetch ran past the buffer end and measurably
-hurt cache-resident sizes on Intel (go-rsync 4 KB: 30.3 → 46.1 GB/s, +52%;
-2–32 KB +16–50%), while ≥ 64 KB keeps the prefetch and is slightly faster
-than the all-prefetch build. On Zen 4 the change is neutral (±1%). Both AVX2
-and SSE2 get the two-body loop.
-
-> **Rejected optimization (superseded by v7)**: VPSRLD for packed reduction
-> (3→2 instructions). High 16 bits contain garbage, causing s1 amplification
-> by 32768×. v7 reduces at 16-bit precision correctly — via VPSRLDQ+VPADDW
-> on 16-bit lanes, never via VPSRLD on 32-bit lanes.
+> **Do not use VPSRLD for packed reduction**: it is only 3→2 instructions,
+> but the high 16 bits contain garbage, causing s1 amplification by 32768×.
+> Reduction must stay at 16-bit precision, via VPSRLDQ+VPADDW on 16-bit
+> lanes.
 
 ### 5.1 CHAR_OFFSET Post-Correction Overflow
 
@@ -213,7 +190,7 @@ sizes (every divergence-interval boundary, zero and random data): `s1`
 identical, `s2` low 16 bits identical, and every full-`s2` difference
 `xor == 0x80000000`. The divergence is only observable via
 `Checksum1Components` (full `s1`/`s2`) compared across machines — a
-comparison go-rsync never performs. (Since the v7 16-bit-lane rewrite,
+comparison go-rsync never performs. (Since the 16-bit-lane rewrite,
 amd64 `Checksum1Components` returns mod-2^16 values anyway.)
 
 Verified by `TestChecksum1Parity` in `delta_test.go`.
@@ -229,10 +206,10 @@ all consumers (`Value`, `S1`, `S2`) only ever read the low 16 bits, and
 homomorphism of the same arithmetic. It turns `Value` into a single OR
 (`s1 | (s2<<16)`), removing two ANDs from the search hot path.
 
-The v7 rewrite (2026-08-02) extends the same principle INTO the assembly:
+The 16-bit-lane rewrite extends the same principle into the assembly:
 `checksum1AVX2`/`checksum1SSE2` now keep 16-bit lanes and return raw sums
 truncated to 16 bits — eliminating the four VPMADDWD pair-sums (19→16
-instructions, +31~37% on Zen 4). Parity tests (`TestAVX2Parity`/
+instructions). Parity tests (`TestAVX2Parity`/
 `TestSSE2Parity`) compare the low 16 bits; `Checksum1Components` on amd64
 now returns mod-2^16 components (arm64/generic still return full 32-bit).
 
@@ -376,20 +353,16 @@ End-to-end delta round-trip, identical files, example usage.
 > (500 ms time-boxed methodology, current code). The legacy Xeon cloud-VM
 > tables that used to live here were removed: that 1-vCPU VM has a severely
 > reduced effective L3 (~512 KB), so numbers beyond cache size reflected memory
-> bandwidth, and the measurement methodology was not recorded. Historical
-> numbers in this doc are for trend only, not current performance — e.g. the
-> v0–v6 optimisation table keeps its legacy Xeon 1KB column for trend
-> comparison only.
+> bandwidth, and the measurement methodology was not recorded.
 
 **AMD Ryzen 9 8940HX (Zen 4, laptop) — 500 ms time-boxed, median of 3 runs.**
-Numbers below are the current (16-bit-lane + conditional prefetch) values
-unless noted:
+Numbers below are the current (16-bit-lane + conditional prefetch) values:
 
-| Block Size | go-rsync | v1 (baseline) | Improvement |
-| ------------ | :-----------: | :-------------: | :-----------: |
-| 1 KB | 78.1 GB/s | 44.8 GB/s | +74% |
-| 64 KB | 109.3 GB/s | 51.5 GB/s | +112% |
-| 1 MB | 105.6 GB/s | 51.2 GB/s | +106% |
+| Block Size | go-rsync |
+| ------------ | :-----------: |
+| 1 KB | 78.1 GB/s |
+| 64 KB | 109.3 GB/s |
+| 1 MB | 105.6 GB/s |
 
 **Three-tier comparison (Ryzen 9, 64KB):**
 
