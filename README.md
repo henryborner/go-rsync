@@ -4,14 +4,14 @@
 [![Go](https://img.shields.io/badge/Go-1.26+-blue)](https://go.dev)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
-**Go implementation of a binary delta-transfer algorithm** — rolling checksum matching, block signature generation, file reconstruction, and a binary wire protocol. The SIMD strong-hash engine (AVX2 8-way + AVX-512 16-way MD5) lives in the separate [`hashsimd`](hashsimd/) module.
+**Go implementation of a binary delta-transfer algorithm** — rolling checksum matching, block signature generation, file reconstruction, and a binary wire protocol. The SIMD strong-hash engine (8-way AVX2, 16-way AVX-512, 4-way NEON MD5) lives in the separate [`hashsimd`](hashsimd/) module.
 
 Built to power [Shuttle](https://github.com/henryborner/shuttle), my own Windows-native file sync tool — this library was extracted from Shuttle and is its core delta-transfer engine.
 
 ## Features
 
 - **SIMD MD5 in the `hashsimd` submodule** — 8-way AVX2 (YMM, VPGATHERDD) + 16-way AVX-512 (ZMM) + 4-way ARM64 NEON parallel MD5, independently reusable.
-- **3-tier checksum engine** — AVX2 (64B/iter) → SSE2 (32B/iter) → pure Go 128B batch. Auto-detects CPU at runtime; opt-in AVX-512 (`Checksum1AVX512`).
+- **Tiered SIMD checksum engine** — amd64: AVX2 (64B/iter) → SSE2 (32B/iter) → pure Go 128B batch; arm64: NEON UDOT → VUMULL → Go. Auto-detects CPU at runtime; opt-in AVX-512 (`Checksum1AVX512`).
 - **Pluggable strong hash** — md5, sha256, xxh64, xxh3-128 built-in. Register your own with `FastSum` support.
 - **Binary wire protocol** — compact big-endian encoding, ready for SSH pipes.
 - **Streaming I/O** — `GenerateSignatureReader`, `SearchReader`, stream decode — O(blockSize) memory for multi-GB files.
@@ -29,6 +29,19 @@ go get github.com/henryborner/go-rsync/hashsimd   # optional: SIMD MD5 engine
 The repo is a Go workspace: the delta core (`github.com/henryborner/go-rsync`)
 depends on `github.com/henryborner/go-rsync/hashsimd` for the SIMD MD5 fast
 paths. `hashsimd` can also be used standalone for hashing many small blocks.
+
+> The package is named **`delta`** (not `go-rsync`): `import delta "github.com/henryborner/go-rsync"`.
+
+## 🔄 Relationship to rsync
+
+go-rsync is an **embeddable delta-transfer library**, not an rsync client or
+CLI. It reuses rsync's rolling-checksum matching ideas but is **not
+wire-compatible** with the rsync protocol: its weak checksum uses
+`CHAR_OFFSET=31`, while stock rsync uses 0, so the two cannot talk to each
+other. If you need to interoperate with real rsync servers/clients, use
+[gokrazy/rsync](https://github.com/gokrazy/rsync) instead. Reach for go-rsync
+when you want to embed SIMD-accelerated binary delta into your own tool with
+a small, streaming, dependency-light API.
 
 ## 🚀 Quick start
 
@@ -92,6 +105,8 @@ Windows 11, Go 1.26.5 — the same machine used for the full tables in
 
 **MD5 SIMD cores (zero-alloc):**
 
+> Benchmarks below live in the `hashsimd/` submodule (`go test -bench=... ./hashsimd/`).
+
 | Benchmark | Time | Throughput |
 | ----------- | ------ | ------------ |
 | `MD5x8_Bulk` (AVX2 8-way, 32KB) | ~7.7 µs | **4.26 GB/s** |
@@ -151,14 +166,14 @@ go test -bench='BenchmarkMD5x8_Bulk$|BenchmarkMD5x8Core_Bulk$|BenchmarkMD5x16Cor
 | `delta_test.go` | Core roundtrip, identical-file, reconstruction tests |
 | `fuzz_test.go` | Fuzz tests: roundtrip, wire encode/decode, checksum parity |
 | `hashsimd/` | **Separate module** — SIMD MD5 engine (8-way AVX2, 16-way AVX-512, 4-way NEON), generators, and tests. See `docs/md5-simd.md`. |
-| `docs/checksum-engine.md` | Checksum engine: algorithm, loop structure, conventions, optimization history, SSE2 appendix |
+| `docs/checksum-engine.md` | Checksum engine: algorithm, loop structure, assembly conventions, SSE2/NEON appendix |
 | `docs/md5-simd.md` | MD5 SIMD reference: architecture, techniques, safety checklist |
 | `docs/neon-checksum.md` | ARM64 NEON rolling checksum: UDOT/VUMULL tiers, WORD encodings, performance |
 | `docs/benchmarks.md` | Full benchmark tables with per-op allocations (B/op, allocs/op) |
 
 ## 📚 Documentation
 
-- **[Checksum Engine](docs/checksum-engine.md)** — Rolling checksum algorithm, AVX2/SSE2 loop structure, Go Plan 9 conventions, optimization history (v0→v6), register map, test coverage, performance data.
+- **[Checksum Engine](docs/checksum-engine.md)** — Rolling checksum algorithm, AVX2/SSE2 loop structure, Go Plan 9 conventions, register map, test coverage, performance data.
 - **[MD5 SIMD](docs/md5-simd.md)** — AVX2/AVX-512 parallel MD5 architecture, gather/transpose techniques, assembly notes, safety checklist.
 - **[NEON Checksum](docs/neon-checksum.md)** — ARM64 NEON rolling checksum: UDOT/VUMULL dispatch, WORD encodings, QEMU/CI verification.
 - **[Benchmarks](docs/benchmarks.md)** — Complete benchmark tables with per-operation allocation counts.
@@ -167,5 +182,5 @@ go test -bench='BenchmarkMD5x8_Bulk$|BenchmarkMD5x8Core_Bulk$|BenchmarkMD5x16Cor
 
 - [rsync](https://github.com/WayneD/rsync) — the original C implementation
 - [md5-simd](https://github.com/minio/md5-simd) — MinIO's AVX2/AVX-512 MD5 (multi-stream server use case)
-- [md5vec](https://github.com/igneous-systems/md5vec) — first Go AVX2 8-way MD5 (2018, unmaintained)
+- [gokrazy/rsync](https://github.com/gokrazy/rsync) — wire-compatible Go rsync client/server (use this for real rsync interop)
 - [Shuttle](https://github.com/henryborner/shuttle) — Windows sync tool using this library
