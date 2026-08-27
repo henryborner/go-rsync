@@ -45,7 +45,7 @@ Network use — sender: `Delta` + `WireEncodeInstructions`; receiver: `ApplyDelt
 ## 📊 Benchmarks (AMD Ryzen 9 8940HX, Go 1.26.5)
 
 | Operation | Throughput |
-|-----------|-----------:|
+| --------- | ----------: |
 | Rolling `Checksum1` (AVX2) | 78–109 GB/s |
 | `GenerateSignature` (md5, 1 MB) | 2.93 GB/s |
 | `GenerateSignatureParallel` (md5, 100 MB, 32t) | 44.3 GB/s |
