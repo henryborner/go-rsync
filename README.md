@@ -92,11 +92,7 @@ All numbers below: **AMD Ryzen 9 8940HX (Zen 4, 16 cores / 32 threads)**, Window
 | xxh3 | zeebo/xxh3 | ~116 µs | 8.62 GB/s |
 | sha256 | stdlib SHA-NI | ~616 µs | 1.62 GB/s |
 
-**GenerateSignatureParallel (md5, 100MB, blockSize≈10KB, 32-thread):**
-
-| Benchmark | Path | Time | Throughput |
-| ----------- | ----------- | ------ | ------------ |
-| `GenerateSignatureParallel` | AVX2 8-way | ~2.37 ms | **44.3 GB/s** |
+**GenerateSignatureParallel** (md5, 100MB, blockSize≈10KB, 32-thread): **44.3 GB/s** (AVX2 8-way, ~2.37 ms).
 
 > `GenerateSignature` uses stdlib `crypto/sha256` (SHA-NI hardware path when
 > available, falling back to its built-in AVX2 path otherwise).
@@ -119,13 +115,10 @@ All numbers below: **AMD Ryzen 9 8940HX (Zen 4, 16 cores / 32 threads)**, Window
 | 64 KB | **109 GB/s** |
 | 1 MB | **106 GB/s** |
 
-> **Opt-in AVX-512**: `Checksum1AVX512(data []byte)` forces the single-ZMM
-> 64 B/iter path. Faster than AVX2 only on Intel server Xeons (full-width
-> 512-bit integer units) for blocks ≥ 16 KB (up to +27% at 256 KB); on AMD
-> Zen 4 it is slower, and on CPUs without AVX-512 it falls back to
-> `Checksum1`. The default `Checksum1` is unchanged (auto AVX2 → SSE2 → Go).
-> **Not guaranteed on all Intel CPUs** — only measured on one Cascade Lake
-> Xeon; benchmark on your own hardware before enabling.
+> **Opt-in AVX-512**: `Checksum1AVX512(data []byte)` forces the ZMM path.
+> Faster than AVX2 only on some Intel server Xeons for blocks ≥ 16 KB
+> (up to +27%); slower on AMD, falls back without AVX-512. Benchmark on
+> your own hardware before enabling.
 
 Run on your own machine:
 
@@ -136,28 +129,10 @@ go test -bench='BenchmarkMD5x8_Bulk$|BenchmarkMD5x8Core_Bulk$|BenchmarkMD5x16Cor
 
 ## 📁 Package layout
 
-| File | Purpose |
-| ------ | --------- |
-| `match.go` | Block matching engine, signature generation |
-| `reconstruct.go` | File reconstruction from instruction stream |
-| `wire.go` | Binary wire protocol encode/decode |
-| `registry.go` | Pluggable strong-hash registry |
-| `api.go` | High-level convenience API: `Delta`, `ApplyDelta`, `RoundTrip`, `ApplyDeltaStream` |
-| `rolling.go` | Rolling checksum (`RollingSum`, `Checksum1`) |
-| `rolling_amd64.s` | AVX2 checksum assembly (64B/iter, conditional prefetch) + `checksum1PackedAVX2` |
-| `rolling_sse2_amd64.s` | SSE2/SSSE3 checksum assembly (32B/iter, conditional prefetch) |
-| `rolling_avx512_amd64.s` | AVX-512 single-ZMM checksum (64B/iter, opt-in) |
-| `rolling_avx512_decl.go` | Opt-in `Checksum1AVX512` with AVX-512 CPU guard |
-| `rolling_avx512_test.go` | AVX-512 parity test (skips without AVX-512) |
-| `rolling_fast_amd64.go` | Tiered dispatch: AVX2 → SSE2 → Go, inlined `Checksum1` |
-| `rolling_generic.go` | Portable byte-by-byte checksum (non-amd64 fallback) |
-| `rolling_fast_arm64.go` | ARM64 NEON tiered dispatch: UDOT (dotprod) → VUMULL → Go |
-| `rolling_neon_dotprod_arm64.s` | UDOT checksum assembly (ARMv8.2+dotprod, 4 insns/64B) |
-| `rolling_neon_arm64.s` | VUMULL NEON checksum assembly (ARM64 fallback) |
-| `registry_stdlib.go` | Built-in hash constructors + `FastSum` implementations |
-| `delta_test.go` | Core roundtrip, identical-file, reconstruction tests |
-| `fuzz_test.go` | Fuzz tests: roundtrip, wire encode/decode, checksum parity |
-| `hashsimd/` | **Separate module** — SIMD MD5 engine (8-way AVX2, 16-way AVX-512, 4-way NEON), generators, and tests. |
+Two-module workspace:
+
+- **`delta`** (this module) — `api.go` (high-level API), `match.go` (matching + signature generation), `wire.go` (binary protocol), `reconstruct.go`, `registry.go` (pluggable strong hashes), `rolling*.go/.s` (SIMD rolling checksum).
+- **`hashsimd`** — SIMD MD5 engine (8-way AVX2 / 16-way AVX-512 / 4-way NEON), independently usable.
 
 ## 🔗 Related
 
